@@ -249,9 +249,9 @@ export default function DispoMatrix() {
 
   if (!projekt) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-sm text-muted">
         Keine Produktion gewählt.{' '}
-        <Link to="/produktionen" className="font-medium text-accent-600 hover:underline">
+        <Link to="/produktionen" className="font-medium text-accent-strong hover:underline">
           Produktion anlegen oder auswählen →
         </Link>
       </div>
@@ -261,7 +261,7 @@ export default function DispoMatrix() {
   const tabCls = (v: 'tag' | 'zeitraum') =>
     [
       'rounded-lg px-3 py-1 text-sm font-medium transition',
-      view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+      view === v ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
     ].join(' ')
 
   const emptyStructure = positionenSortiert.length === 0 || bloecke.length === 0
@@ -271,9 +271,9 @@ export default function DispoMatrix() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dispo-Matrix</h1>
-          <p className="mt-1 text-sm text-slate-500">{projekt.name} · Live-Sync</p>
+          <p className="mt-1 text-sm text-muted">{projekt.name} · Live-Sync</p>
         </div>
-        <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+        <div className="flex gap-1 rounded-xl bg-line/40 p-1">
           <button className={tabCls('tag')} onClick={() => setView('tag')}>
             Tag
           </button>
@@ -283,21 +283,21 @@ export default function DispoMatrix() {
         </div>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>}
 
       {emptyStructure ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+        <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-sm text-muted">
           Noch keine Positionen/Schichtblöcke.{' '}
-          <Link to="/setup" className="font-medium text-accent-600 hover:underline">
+          <Link to="/setup" className="font-medium text-accent-strong hover:underline">
             Jetzt im Setup einrichten →
           </Link>
         </div>
       ) : view === 'tag' ? (
         <>
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <div className="flex items-center justify-between rounded-xl border border-line bg-surface px-3 py-2">
             <button
               onClick={() => setTag((t) => addDays(t, -1))}
-              className="rounded-lg px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              className="rounded-lg px-3 py-1 text-sm text-muted hover:bg-line/40"
             >
               ← Vortag
             </button>
@@ -306,24 +306,24 @@ export default function DispoMatrix() {
             </span>
             <button
               onClick={() => setTag((t) => addDays(t, 1))}
-              className="rounded-lg px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              className="rounded-lg px-3 py-1 text-sm text-muted hover:bg-line/40"
             >
               Folgetag →
             </button>
           </div>
 
           {conflictList.length > 0 && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
               <span className="font-medium">⚠ Doppelbelegung:</span>{' '}
               {conflictList.map((c) => `${c.person} (${c.a} ↔ ${c.b})`).join(' · ')}
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="sticky left-0 z-10 bg-white p-3 text-left font-medium text-slate-500">
+                <tr className="border-b border-line">
+                  <th className="sticky left-0 z-10 bg-surface p-3 text-left font-medium text-muted">
                     Position
                   </th>
                   {bloecke.map((b) => (
@@ -334,7 +334,7 @@ export default function DispoMatrix() {
                           style={{ backgroundColor: b.farbe ?? '#94a3b8' }}
                         />
                         {b.label}
-                        <span className="text-xs font-normal text-slate-400">
+                        <span className="font-mono tnum text-xs font-normal text-muted">
                           {b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)}
                         </span>
                       </span>
@@ -344,11 +344,11 @@ export default function DispoMatrix() {
               </thead>
               <tbody>
                 {positionenSortiert.map((pos) => (
-                  <tr key={pos.id} className="border-b border-slate-100 last:border-0">
-                    <td className="sticky left-0 z-10 bg-white p-3 align-top">
+                  <tr key={pos.id} className="border-b border-line last:border-0">
+                    <td className="sticky left-0 z-10 bg-surface p-3 align-top">
                       <div className="font-medium">{pos.label}</div>
                       {pos.department?.name && (
-                        <div className="text-xs text-slate-400">{pos.department.name}</div>
+                        <div className="text-xs text-muted">{pos.department.name}</div>
                       )}
                     </td>
                     {bloecke.map((b) => {
@@ -364,21 +364,21 @@ export default function DispoMatrix() {
                                   title={conflictIds.has(s.id) ? 'Zeitliche Doppelbelegung' : undefined}
                                   className={[
                                     'group flex items-center justify-between gap-2 rounded-lg px-2 py-1',
-                                    conflictIds.has(s.id) ? 'bg-red-50 ring-1 ring-red-300' : 'bg-slate-50',
+                                    conflictIds.has(s.id) ? 'bg-danger/10 ring-1 ring-danger/40' : 'bg-canvas',
                                   ].join(' ')}
                                 >
                                   <span className="flex items-center gap-1.5 truncate">
                                     <span
                                       className={[
                                         'h-1.5 w-1.5 rounded-full',
-                                        s.bestaetigt ? 'bg-emerald-500' : 'bg-amber-400',
+                                        s.bestaetigt ? 'bg-ok/150' : 'bg-warn',
                                       ].join(' ')}
                                     />
                                     <span className="truncate">{p?.name ?? 'Unbekannt'}</span>
                                   </span>
                                   <button
                                     onClick={() => remove(s.id)}
-                                    className="text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                                    className="text-muted/60 opacity-0 transition hover:text-danger group-hover:opacity-100"
                                     title="Entfernen"
                                   >
                                     ×
@@ -392,7 +392,7 @@ export default function DispoMatrix() {
                                 assign(pos.id, b.id, e.target.value, pos.location_id)
                                 e.target.value = ''
                               }}
-                              className="w-full rounded-lg border border-dashed border-slate-300 bg-transparent px-2 py-1 text-xs text-slate-400 hover:border-accent-400 hover:text-accent-600"
+                              className="w-full rounded-lg border border-dashed border-line bg-transparent px-2 py-1 text-xs text-muted hover:border-accent hover:text-accent-strong"
                             >
                               <option value="">+ zuweisen</option>
                               {personen.map((p) => (
@@ -413,11 +413,11 @@ export default function DispoMatrix() {
         </>
       ) : (
         // Zeitraum-Übersicht: Positionen × Tage (read-only; Tag-Header springt in Tagesansicht)
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200">
-                <th className="sticky left-0 z-10 bg-white p-3 text-left font-medium text-slate-500">
+              <tr className="border-b border-line">
+                <th className="sticky left-0 z-10 bg-surface p-3 text-left font-medium text-muted">
                   Position
                 </th>
                 {days.map((d) => (
@@ -427,7 +427,7 @@ export default function DispoMatrix() {
                         setTag(d)
                         setView('tag')
                       }}
-                      className="capitalize text-slate-600 hover:text-accent-600"
+                      className="capitalize text-muted hover:text-accent-strong"
                       title="In Tagesansicht öffnen"
                     >
                       {colFmt.format(dDate(d))}
@@ -438,11 +438,11 @@ export default function DispoMatrix() {
             </thead>
             <tbody>
               {positionenSortiert.map((pos) => (
-                <tr key={pos.id} className="border-b border-slate-100 last:border-0">
-                  <td className="sticky left-0 z-10 bg-white p-3 align-top">
+                <tr key={pos.id} className="border-b border-line last:border-0">
+                  <td className="sticky left-0 z-10 bg-surface p-3 align-top">
                     <div className="font-medium">{pos.label}</div>
                     {pos.department?.name && (
-                      <div className="text-xs text-slate-400">{pos.department.name}</div>
+                      <div className="text-xs text-muted">{pos.department.name}</div>
                     )}
                   </td>
                   {days.map((d) => {
@@ -456,7 +456,7 @@ export default function DispoMatrix() {
                             return (
                               <div
                                 key={s.id}
-                                className="flex items-center gap-1.5 truncate rounded-md bg-slate-50 px-1.5 py-0.5 text-xs"
+                                className="flex items-center gap-1.5 truncate rounded-md bg-canvas px-1.5 py-0.5 text-xs"
                                 title={b?.label}
                               >
                                 <span
@@ -467,7 +467,7 @@ export default function DispoMatrix() {
                               </div>
                             )
                           })}
-                          {cs.length === 0 && <span className="text-xs text-slate-300">·</span>}
+                          {cs.length === 0 && <span className="text-xs text-muted/60">·</span>}
                         </div>
                       </td>
                     )

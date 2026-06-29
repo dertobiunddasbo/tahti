@@ -8,10 +8,10 @@ interface Dept { id: string; name: string; sortierung: number }
 interface Block { id: string; label: string; start_zeit: string; ende_zeit: string; farbe: string | null }
 interface Pos { id: string; label: string; department_id: string | null; location_id: string | null }
 
-const card = 'rounded-2xl border border-slate-200 bg-white p-5 space-y-3'
-const input = 'rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-100'
-const addBtn = 'rounded-lg bg-accent-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-accent-700 disabled:opacity-50'
-const delBtn = 'text-slate-300 transition hover:text-red-500'
+const card = 'rounded-2xl border border-line bg-surface p-5 space-y-3'
+const input = 'rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
+const addBtn = 'rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink transition hover:opacity-90 disabled:opacity-50'
+const delBtn = 'text-muted/60 transition hover:text-danger'
 
 export default function Setup() {
   const { selected: projekt } = useProductions()
@@ -54,9 +54,9 @@ export default function Setup() {
 
   if (!projekt) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-sm text-muted">
         Keine Produktion gewählt.{' '}
-        <Link to="/produktionen" className="font-medium text-accent-600 hover:underline">Produktion anlegen oder auswählen →</Link>
+        <Link to="/produktionen" className="font-medium text-accent-strong hover:underline">Produktion anlegen oder auswählen →</Link>
       </div>
     )
   }
@@ -70,21 +70,21 @@ export default function Setup() {
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Setup</h1>
-        <p className="mt-1 text-sm text-slate-500">{projekt.name} · Struktur einrichten</p>
+        <p className="mt-1 text-sm text-muted">{projekt.name} · Struktur einrichten</p>
       </div>
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>}
 
       {/* Locations */}
       <div className={card}>
         <h2 className="font-medium">Locations</h2>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {locs.map((l) => (
             <li key={l.id} className="flex items-center justify-between py-2 text-sm">
-              <span>{l.name}{l.adresse ? <span className="text-slate-400"> · {l.adresse}</span> : null}</span>
+              <span>{l.name}{l.adresse ? <span className="text-muted"> · {l.adresse}</span> : null}</span>
               <button onClick={() => del('location', l.id)} className={delBtn} title="Löschen">×</button>
             </li>
           ))}
-          {locs.length === 0 && <li className="py-2 text-sm text-slate-400">Noch keine Locations.</li>}
+          {locs.length === 0 && <li className="py-2 text-sm text-muted">Noch keine Locations.</li>}
         </ul>
         <form onSubmit={submitLoc} className="flex flex-wrap gap-2">
           <input className={`${input} flex-1`} placeholder="Name" value={loc.name} onChange={(e) => setLoc({ ...loc, name: e.target.value })} />
@@ -96,14 +96,14 @@ export default function Setup() {
       {/* Departments */}
       <div className={card}>
         <h2 className="font-medium">Departments</h2>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {depts.map((d) => (
             <li key={d.id} className="flex items-center justify-between py-2 text-sm">
-              <span><span className="text-slate-400">{d.sortierung}.</span> {d.name}</span>
+              <span><span className="text-muted">{d.sortierung}.</span> {d.name}</span>
               <button onClick={() => del('department', d.id)} className={delBtn} title="Löschen">×</button>
             </li>
           ))}
-          {depts.length === 0 && <li className="py-2 text-sm text-slate-400">Noch keine Departments.</li>}
+          {depts.length === 0 && <li className="py-2 text-sm text-muted">Noch keine Departments.</li>}
         </ul>
         <form onSubmit={submitDept} className="flex gap-2">
           <input className={`${input} flex-1`} placeholder="z. B. Kamera" value={dept.name} onChange={(e) => setDept({ name: e.target.value })} />
@@ -114,23 +114,23 @@ export default function Setup() {
       {/* Schichtblöcke */}
       <div className={card}>
         <h2 className="font-medium">Schichtblöcke</h2>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {blocks.map((b) => (
             <li key={b.id} className="flex items-center justify-between py-2 text-sm">
               <span className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: b.farbe ?? '#94a3b8' }} />
-                {b.label} <span className="text-slate-400">{b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)}</span>
+                {b.label} <span className="text-muted">{b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)}</span>
               </span>
               <button onClick={() => del('schichtblock', b.id)} className={delBtn} title="Löschen">×</button>
             </li>
           ))}
-          {blocks.length === 0 && <li className="py-2 text-sm text-slate-400">Noch keine Schichtblöcke.</li>}
+          {blocks.length === 0 && <li className="py-2 text-sm text-muted">Noch keine Schichtblöcke.</li>}
         </ul>
         <form onSubmit={submitBlock} className="flex flex-wrap items-center gap-2">
           <input className={`${input} flex-1`} placeholder="Label (z. B. Früh)" value={block.label} onChange={(e) => setBlock({ ...block, label: e.target.value })} />
           <input type="time" className={input} value={block.start_zeit} onChange={(e) => setBlock({ ...block, start_zeit: e.target.value })} />
           <input type="time" className={input} value={block.ende_zeit} onChange={(e) => setBlock({ ...block, ende_zeit: e.target.value })} />
-          <input type="color" className="h-9 w-10 rounded-lg border border-slate-300" value={block.farbe} onChange={(e) => setBlock({ ...block, farbe: e.target.value })} />
+          <input type="color" className="h-9 w-10 rounded-lg border border-line" value={block.farbe} onChange={(e) => setBlock({ ...block, farbe: e.target.value })} />
           <button className={addBtn}>+ Hinzufügen</button>
         </form>
       </div>
@@ -138,18 +138,18 @@ export default function Setup() {
       {/* Positionen */}
       <div className={card}>
         <h2 className="font-medium">Positionen</h2>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {positions.map((p) => {
             const d = depts.find((x) => x.id === p.department_id)
             const l = locs.find((x) => x.id === p.location_id)
             return (
               <li key={p.id} className="flex items-center justify-between py-2 text-sm">
-                <span>{p.label}{(d || l) && <span className="text-slate-400"> · {[d?.name, l?.name].filter(Boolean).join(' / ')}</span>}</span>
+                <span>{p.label}{(d || l) && <span className="text-muted"> · {[d?.name, l?.name].filter(Boolean).join(' / ')}</span>}</span>
                 <button onClick={() => del('position', p.id)} className={delBtn} title="Löschen">×</button>
               </li>
             )
           })}
-          {positions.length === 0 && <li className="py-2 text-sm text-slate-400">Noch keine Positionen.</li>}
+          {positions.length === 0 && <li className="py-2 text-sm text-muted">Noch keine Positionen.</li>}
         </ul>
         <form onSubmit={submitPos} className="flex flex-wrap gap-2">
           <input className={`${input} flex-1`} placeholder="Label (z. B. Kamera K1)" value={pos.label} onChange={(e) => setPos({ ...pos, label: e.target.value })} />

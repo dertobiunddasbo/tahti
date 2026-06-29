@@ -53,15 +53,15 @@ function ShiftCard({
   return (
     <div
       className={[
-        'rounded-2xl border bg-white p-4',
-        highlight === 'now' ? 'border-accent-500 ring-2 ring-accent-100' : 'border-slate-200',
+        'rounded-2xl border bg-surface p-4',
+        highlight === 'now' ? 'border-accent ring-2 ring-accent/30' : 'border-line',
       ].join(' ')}
     >
       {highlight && (
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted">
           {highlight === 'now' ? (
             <>
-              <span className="h-2 w-2 animate-pulse rounded-full bg-accent-500" /> Jetzt
+              <span className="h-2 w-2 animate-pulse rounded-full bg-accent/100" /> Jetzt
             </>
           ) : (
             'Als nächstes'
@@ -73,26 +73,26 @@ function ShiftCard({
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
             <span className="font-medium">{s.schichtblock?.label ?? 'Schicht'}</span>
-            <span className="text-slate-400">·</span>
-            <span className="truncate text-slate-600">{s.position?.label ?? 'Position offen'}</span>
+            <span className="text-muted">·</span>
+            <span className="truncate text-muted">{s.position?.label ?? 'Position offen'}</span>
           </div>
-          <div className="mt-1 text-sm text-slate-500">
+          <div className="mt-1 text-sm text-muted">
             {win
               ? `${dayFmt.format(win.start)} · ${timeFmt.format(win.start)}–${timeFmt.format(win.end)}`
               : s.tag}
             {s.location?.name ? ` · ${s.location.name}` : ''}
           </div>
-          {s.projekt?.name && <div className="mt-0.5 text-xs text-slate-400">{s.projekt.name}</div>}
+          {s.projekt?.name && <div className="mt-0.5 text-xs text-muted">{s.projekt.name}</div>}
         </div>
         <div className="shrink-0">
           {s.bestaetigt ? (
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+            <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-medium text-ok">
               ✓ bestätigt
             </span>
           ) : (
             <button
               onClick={() => onConfirm(s.id)}
-              className="rounded-full bg-accent-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-accent-700 print:hidden"
+              className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-ink transition hover:opacity-90 print:hidden"
             >
               Bestätigen
             </button>
@@ -181,20 +181,20 @@ export default function CrewHome() {
           <h1 className="text-2xl font-semibold tracking-tight">
             Hallo{person?.name ? `, ${person.name.split(' ')[0]}` : ''}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Deine nächste Schicht auf einen Blick.</p>
+          <p className="mt-1 text-sm text-muted">Deine nächste Schicht auf einen Blick.</p>
         </div>
         <button
           onClick={() => window.print()}
-          className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 print:hidden"
+          className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:bg-line/40 print:hidden"
         >
           Plan drucken
         </button>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>}
 
       {shifts === null ? (
-        <div className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="h-24 animate-pulse rounded-2xl bg-line/40" />
       ) : current || next ? (
         <div className="space-y-3">
           {current && <ShiftCard s={current} highlight="now" onConfirm={confirm} />}
@@ -203,15 +203,15 @@ export default function CrewHome() {
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-          <p className="text-sm font-medium text-slate-700">Keine anstehenden Schichten</p>
-          <p className="mt-1 text-sm text-slate-400">Sobald du eingeplant bist, erscheint es hier.</p>
+        <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center">
+          <p className="text-sm font-medium text-ink">Keine anstehenden Schichten</p>
+          <p className="mt-1 text-sm text-muted">Sobald du eingeplant bist, erscheint es hier.</p>
         </div>
       )}
 
       {upcoming.length > 1 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-medium text-slate-500">Kommende Schichten</h2>
+          <h2 className="font-mono text-xs uppercase tracking-wide text-muted">Kommende Schichten</h2>
           <div className="space-y-2">
             {upcoming.slice(current ? 0 : 1).map((s) => (
               <ShiftCard key={s.id} s={s} onConfirm={confirm} />
@@ -222,23 +222,23 @@ export default function CrewHome() {
 
       {kontakte.length > 0 && (
         <div className="space-y-2 print:hidden">
-          <h2 className="text-sm font-medium text-slate-500">Kontakte</h2>
-          <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <h2 className="font-mono text-xs uppercase tracking-wide text-muted">Kontakte</h2>
+          <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
             {kontakte.map((k) => (
               <div key={k.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <div className="truncate font-medium">{k.name}</div>
-                  <div className="text-xs capitalize text-slate-400">{k.rolle}</div>
+                  <div className="text-xs capitalize text-muted">{k.rolle}</div>
                 </div>
                 {k.mobil ? (
                   <a
                     href={`tel:${k.mobil.replace(/\s/g, '')}`}
-                    className="shrink-0 rounded-lg bg-accent-50 px-3 py-1.5 text-sm font-medium text-accent-700 hover:bg-accent-100"
+                    className="shrink-0 rounded-lg bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent-strong hover:bg-accent/20"
                   >
                     Anrufen
                   </a>
                 ) : (
-                  <span className="text-xs text-slate-300">keine Nummer</span>
+                  <span className="text-xs text-muted/60">keine Nummer</span>
                 )}
               </div>
             ))}

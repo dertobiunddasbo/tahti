@@ -14,13 +14,13 @@ interface BesetzungRow {
 }
 
 const STATUS: { value: CrewStatus; label: string; cls: string }[] = [
-  { value: 'eingeladen', label: 'eingeladen', cls: 'bg-amber-50 text-amber-700' },
-  { value: 'zugesagt', label: 'zugesagt', cls: 'bg-emerald-50 text-emerald-700' },
-  { value: 'abgesagt', label: 'abgesagt', cls: 'bg-slate-100 text-slate-500' },
+  { value: 'eingeladen', label: 'eingeladen', cls: 'bg-warn/15 text-warn' },
+  { value: 'zugesagt', label: 'zugesagt', cls: 'bg-ok/15 text-ok' },
+  { value: 'abgesagt', label: 'abgesagt', cls: 'bg-line/40 text-muted' },
 ]
 
 const input =
-  'rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-100'
+  'rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
 
 export default function Crew() {
   const { selected: projekt } = useProductions()
@@ -112,9 +112,9 @@ export default function Crew() {
 
   if (!projekt) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-sm text-muted">
         Keine Produktion gewählt.{' '}
-        <Link to="/produktionen" className="font-medium text-accent-600 hover:underline">
+        <Link to="/produktionen" className="font-medium text-accent-strong hover:underline">
           Produktion anlegen oder auswählen →
         </Link>
       </div>
@@ -126,20 +126,20 @@ export default function Crew() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Crew</h1>
-          <p className="mt-1 text-sm text-slate-500">{projekt.name} · Besetzung der Produktion</p>
+          <p className="mt-1 text-sm text-muted">{projekt.name} · Besetzung der Produktion</p>
         </div>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:bg-line/40"
         >
           {open ? 'Abbrechen' : '+ Neue Person'}
         </button>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</div>}
 
       {open && (
-        <form onSubmit={createPerson} className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-4">
+        <form onSubmit={createPerson} className="flex flex-wrap gap-2 rounded-2xl border border-line bg-surface p-4">
           <input className={`${input} flex-1`} placeholder="Name" value={neu.name} onChange={(e) => setNeu({ ...neu, name: e.target.value })} />
           <input className={`${input} flex-1`} type="email" placeholder="E-Mail" value={neu.email} onChange={(e) => setNeu({ ...neu, email: e.target.value })} />
           <input className={`${input} flex-1`} placeholder="Mobil (optional)" value={neu.mobil} onChange={(e) => setNeu({ ...neu, mobil: e.target.value })} />
@@ -150,15 +150,15 @@ export default function Crew() {
             <option value="admin">Admin</option>
             <option value="gast">Gast</option>
           </select>
-          <button className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700">
+          <button className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90">
             Anlegen &amp; hinzufügen
           </button>
         </form>
       )}
 
       {/* Person aus Pool hinzufügen */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-        <span className="text-sm text-slate-500">Aus Firmen-Pool hinzufügen:</span>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-surface p-4">
+        <span className="text-sm text-muted">Aus Firmen-Pool hinzufügen:</span>
         <select className={`${input} flex-1`} value={addId} onChange={(e) => setAddId(e.target.value)}>
           <option value="">Person wählen …</option>
           {verfuegbar.map((p) => (
@@ -170,23 +170,23 @@ export default function Crew() {
         <button
           onClick={() => addToTeam(addId)}
           disabled={!addId}
-          className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
         >
           Hinzufügen
         </button>
       </div>
 
       {/* Besetzungsliste */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-2 text-sm font-medium text-slate-500">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="border-b border-line px-4 py-2 text-sm font-medium text-muted">
           Team ({besetzung.length})
         </div>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {besetzung.map((b) => (
             <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="truncate font-medium">{b.person?.name ?? 'Unbekannt'}</div>
-                <div className="truncate text-xs text-slate-400">{b.person?.email}</div>
+                <div className="truncate text-xs text-muted">{b.person?.email}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <select
@@ -200,14 +200,14 @@ export default function Crew() {
                     </option>
                   ))}
                 </select>
-                <button onClick={() => removeFromTeam(b.id)} className="text-slate-300 hover:text-red-500" title="Entfernen">
+                <button onClick={() => removeFromTeam(b.id)} className="text-muted/60 hover:text-danger" title="Entfernen">
                   ×
                 </button>
               </div>
             </li>
           ))}
           {besetzung.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-slate-400">Noch niemand in der Crew.</li>
+            <li className="px-4 py-6 text-center text-sm text-muted">Noch niemand in der Crew.</li>
           )}
         </ul>
       </div>

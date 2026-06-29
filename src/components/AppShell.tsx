@@ -2,26 +2,31 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useProductions } from '../productions/ProductionProvider'
+import { useTheme } from '../lib/theme'
 
 function navClass({ isActive }: { isActive: boolean }) {
   return [
-    'rounded-lg px-3 py-1.5 text-sm font-medium transition',
-    isActive ? 'bg-accent-50 text-accent-700' : 'text-slate-500 hover:text-slate-900',
+    'rounded-lg px-2.5 py-1 font-mono text-xs uppercase tracking-wide transition',
+    isActive ? 'bg-accent/15 text-accent-strong' : 'text-muted hover:text-ink',
   ].join(' ')
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { person, isPlaner, signOut } = useAuth()
+  const { isPlaner, signOut } = useAuth()
   const { productions, selectedId, setSelectedId } = useProductions()
+  const { dark, toggle } = useTheme()
 
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col">
-      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur print:hidden">
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface/90 px-4 py-3 backdrop-blur print:hidden">
         <div className="flex items-center gap-4">
-          <span className="text-base font-semibold tracking-tight">liiku</span>
-          <nav className="flex items-center gap-1">
+          <span className="flex items-center gap-1.5 font-mono text-base font-bold tracking-tight">
+            liiku
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+          </span>
+          <nav className="flex flex-wrap items-center gap-1">
             <NavLink to="/" end className={navClass}>
-              Meine Schichten
+              Schichten
             </NavLink>
             {isPlaner && (
               <NavLink to="/produktionen" className={navClass}>
@@ -45,12 +50,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
             )}
           </nav>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {isPlaner && productions.length > 0 && (
             <select
               value={selectedId ?? ''}
               onChange={(e) => setSelectedId(e.target.value)}
-              className="max-w-[180px] rounded-lg border border-slate-300 px-2 py-1 text-sm"
+              className="max-w-[170px] rounded-lg border border-line bg-elevated px-2 py-1 font-mono text-xs text-ink"
               title="Aktive Produktion"
             >
               {productions.map((p) => (
@@ -60,10 +65,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
               ))}
             </select>
           )}
-          <span className="hidden text-sm text-slate-400 sm:inline">{person?.name}</span>
+          <button
+            onClick={toggle}
+            className="rounded-lg border border-line px-2 py-1 text-sm text-muted transition hover:text-ink"
+            title={dark ? 'Light Mode' : 'Dark Mode'}
+            aria-label="Theme umschalten"
+          >
+            {dark ? '☀' : '☾'}
+          </button>
           <button
             onClick={signOut}
-            className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:text-slate-900"
+            className="rounded-lg px-2 py-1 font-mono text-xs uppercase tracking-wide text-muted transition hover:text-ink"
           >
             Abmelden
           </button>

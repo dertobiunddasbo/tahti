@@ -16,16 +16,16 @@ function NoAccess() {
   const { person, signOut } = useAuth()
   return (
     <FullScreen>
-      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 text-center">
         <h1 className="text-lg font-semibold">Kein Zugang</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-muted">
           {person
             ? 'Dein Account ist noch keiner Organisation zugeordnet. Wende dich an die Disposition.'
             : 'Dieser Login ist noch nicht freigeschaltet. Wende dich an die Disposition.'}
         </p>
         <button
           onClick={signOut}
-          className="mt-6 rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:text-slate-900"
+          className="mt-6 rounded-lg px-3 py-1.5 text-sm text-muted hover:text-ink"
         >
           Abmelden
         </button>
@@ -40,7 +40,7 @@ export default function App() {
   if (loading) {
     return (
       <FullScreen>
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-accent-600" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-accent" />
       </FullScreen>
     )
   }

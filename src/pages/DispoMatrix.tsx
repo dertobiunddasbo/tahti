@@ -882,14 +882,6 @@ export default function DispoMatrix() {
                 />
                 Open End
               </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={editShift.bestaetigt}
-                  onChange={(e) => setEditShift({ ...editShift, bestaetigt: e.target.checked })}
-                />
-                Bestätigt
-              </label>
             </div>
 
             <div className="flex justify-end gap-2 pt-1">

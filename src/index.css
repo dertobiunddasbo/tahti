@@ -64,6 +64,15 @@ body,
   height: 100%;
 }
 
+/* Kein horizontales Doku-Scrollen (iOS rendert sonst zu breit / schneidet ab).
+   'clip' statt 'hidden' -> bricht den sticky Header nicht. Breite Tabellen
+   scrollen weiterhin in ihrem eigenen overflow-x-auto-Container. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);

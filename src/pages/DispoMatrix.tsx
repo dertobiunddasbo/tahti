@@ -56,6 +56,17 @@ function dDate(iso: string) {
   return new Date(`${iso}T00:00:00Z`)
 }
 
+interface WarnShift {
+  id: string
+  person_id: string | null
+  schichtblock_id: string | null
+  tag: string
+}
+
+// ArbZG-nahe Schwellen: § 5 (11 h Ruhezeit), § 3 (max. 10 h/Tag)
+const REST_MS = 11 * 3600 * 1000
+const MAXDAY_MS = 10 * 3600 * 1000
+
 export default function DispoMatrix() {
   const { selected: projekt } = useProductions()
   const [view, setView] = useState<'tag' | 'zeitraum'>('tag')
@@ -64,6 +75,7 @@ export default function DispoMatrix() {
   const [personen, setPersonen] = useState<PersonOpt[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [rangeShifts, setRangeShifts] = useState<RangeShift[]>([])
+  const [allShifts, setAllShifts] = useState<WarnShift[]>([])
   const [tag, setTag] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [error, setError] = useState<string | null>(null)
 
@@ -139,9 +151,22 @@ export default function DispoMatrix() {
       .then(({ data }) => setRangeShifts((data as RangeShift[]) ?? []))
   }, [projekt, days])
 
+  // Alle Schichten der Produktion (für tagesübergreifende Ruhezeit-/Arbeitszeit-Prüfung)
+  const loadAll = useCallback(() => {
+    if (!projekt) return
+    supabase
+      .from('schicht')
+      .select('id, person_id, schichtblock_id, tag')
+      .eq('projekt_id', projekt.id)
+      .then(({ data }) => setAllShifts((data as WarnShift[]) ?? []))
+  }, [projekt])
+
   useEffect(() => {
     loadShifts()
   }, [loadShifts])
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
   useEffect(() => {
     if (view === 'zeitraum') loadRange()
   }, [view, loadRange])
@@ -155,6 +180,7 @@ export default function DispoMatrix() {
         { event: '*', schema: 'public', table: 'schicht', filter: `projekt_id=eq.${projekt.id}` },
         () => {
           loadShifts()
+          loadAll()
           if (view === 'zeitraum') loadRange()
         },
       )
@@ -162,7 +188,7 @@ export default function DispoMatrix() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [projekt, loadShifts, loadRange, view])
+  }, [projekt, loadShifts, loadRange, loadAll, view])
 
   const positionenSortiert = useMemo(
     () =>
@@ -217,6 +243,70 @@ export default function DispoMatrix() {
     }
     return { conflictIds: ids, conflictList: list }
   }, [shifts, blockById, personMap, tag])
+
+  // ArbZG-Warnungen: < 11 h Ruhezeit (§5) und > 10 h/Tag (§3), tagesübergreifend
+  const { warnIds, warnList } = useMemo(() => {
+    const ids = new Set<string>()
+    const seen = new Set<string>()
+    const msgs: { person: string; text: string }[] = []
+    const interval = (sh: WarnShift) => {
+      const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
+      if (!b) return null
+      const s = new Date(`${sh.tag}T${b.start_zeit}Z`)
+      let e = new Date(`${sh.tag}T${b.ende_zeit}Z`)
+      if (e <= s) e = new Date(e.getTime() + 86400000)
+      return { id: sh.id, tag: sh.tag, start: s.getTime(), end: e.getTime(), dur: e.getTime() - s.getTime() }
+    }
+    const byPerson = new Map<string, ReturnType<typeof interval>[]>()
+    for (const sh of allShifts) {
+      if (!sh.person_id) continue
+      const iv = interval(sh)
+      if (!iv) continue
+      const arr = byPerson.get(sh.person_id) ?? []
+      arr.push(iv)
+      byPerson.set(sh.person_id, arr)
+    }
+    for (const [pid, arr0] of byPerson) {
+      const arr = arr0.filter(Boolean).sort((a, b) => a!.start - b!.start)
+      const name = personMap.get(pid)?.name ?? 'Crew'
+      // Ruhezeit zwischen aufeinanderfolgenden Schichten
+      for (let i = 1; i < arr.length; i++) {
+        const gap = arr[i]!.start - arr[i - 1]!.end
+        if (gap >= 0 && gap < REST_MS) {
+          ids.add(arr[i]!.id)
+          ids.add(arr[i - 1]!.id)
+          if (arr[i]!.tag === tag || arr[i - 1]!.tag === tag) {
+            const k = `rest-${arr[i - 1]!.id}-${arr[i]!.id}`
+            if (!seen.has(k)) {
+              seen.add(k)
+              msgs.push({ person: name, text: `Ruhezeit nur ${(gap / 3600000).toFixed(1)} h (<11 h)` })
+            }
+          }
+        }
+      }
+      // Tagesarbeitszeit
+      const byDay = new Map<string, { sum: number; ids: string[] }>()
+      for (const iv of arr) {
+        const d = byDay.get(iv!.tag) ?? { sum: 0, ids: [] }
+        d.sum += iv!.dur
+        d.ids.push(iv!.id)
+        byDay.set(iv!.tag, d)
+      }
+      for (const [d, info] of byDay) {
+        if (info.sum > MAXDAY_MS) {
+          info.ids.forEach((id) => ids.add(id))
+          if (d === tag) {
+            const k = `day-${pid}-${d}`
+            if (!seen.has(k)) {
+              seen.add(k)
+              msgs.push({ person: name, text: `${(info.sum / 3600000).toFixed(1)} h am Tag (>10 h)` })
+            }
+          }
+        }
+      }
+    }
+    return { warnIds: ids, warnList: msgs }
+  }, [allShifts, blockById, personMap, tag])
 
   async function assign(positionId: string, blockId: string, personId: string, locationId: string | null) {
     if (!projekt || !personId) return
@@ -319,6 +409,13 @@ export default function DispoMatrix() {
             </div>
           )}
 
+          {warnList.length > 0 && (
+            <div className="rounded-lg border border-warn/30 bg-warn/15 p-3 text-sm text-warn">
+              <span className="font-medium">⚠ Arbeitszeit (ArbZG):</span>{' '}
+              {warnList.map((w) => `${w.person}: ${w.text}`).join(' · ')}
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -361,17 +458,27 @@ export default function DispoMatrix() {
                               return (
                                 <div
                                   key={s.id}
-                                  title={conflictIds.has(s.id) ? 'Zeitliche Doppelbelegung' : undefined}
+                                  title={
+                                    conflictIds.has(s.id)
+                                      ? 'Zeitliche Doppelbelegung'
+                                      : warnIds.has(s.id)
+                                        ? 'Arbeitszeit/Ruhezeit (ArbZG) prüfen'
+                                        : undefined
+                                  }
                                   className={[
                                     'group flex items-center justify-between gap-2 rounded-lg px-2 py-1',
-                                    conflictIds.has(s.id) ? 'bg-danger/10 ring-1 ring-danger/40' : 'bg-canvas',
+                                    conflictIds.has(s.id)
+                                      ? 'bg-danger/10 ring-1 ring-danger/40'
+                                      : warnIds.has(s.id)
+                                        ? 'bg-warn/15 ring-1 ring-warn/40'
+                                        : 'bg-canvas',
                                   ].join(' ')}
                                 >
                                   <span className="flex items-center gap-1.5 truncate">
                                     <span
                                       className={[
                                         'h-1.5 w-1.5 rounded-full',
-                                        s.bestaetigt ? 'bg-ok/150' : 'bg-warn',
+                                        s.bestaetigt ? 'bg-ok' : 'bg-warn',
                                       ].join(' ')}
                                     />
                                     <span className="truncate">{p?.name ?? 'Unbekannt'}</span>

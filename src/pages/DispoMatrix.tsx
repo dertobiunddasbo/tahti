@@ -384,7 +384,6 @@ export default function DispoMatrix() {
 
   async function remove(s: Shift, locationId: string | null) {
     if (!projekt) return
-    if (s.bestaetigt && !window.confirm('Diese Schicht ist von der Crew bestätigt. Wirklich entfernen?')) return
     const { error } = await supabase.from('schicht').delete().eq('id', s.id)
     if (error) {
       setError(error.message)

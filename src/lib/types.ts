@@ -5,6 +5,7 @@ export type SystemRolle = 'admin' | 'disponent' | 'lead' | 'crew' | 'gast'
 export type PersonTyp = 'intern' | 'freelance' | 'lokal' | 'volunteer' | 'vendor' | 'client'
 export type ProjektTyp = 'dreh' | 'event' | 'live'
 export type SchichtTyp = 'arbeit' | 'standby' | 'eigendispo' | 'nachtwache'
+export type CrewStatus = 'eingeladen' | 'zugesagt' | 'abgesagt'
 
 export const PLANER_ROLLEN: SystemRolle[] = ['admin', 'disponent', 'lead']
 

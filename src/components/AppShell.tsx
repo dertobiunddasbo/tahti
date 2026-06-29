@@ -34,6 +34,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </NavLink>
             )}
             {isPlaner && (
+              <NavLink to="/crew" className={navClass}>
+                Crew
+              </NavLink>
+            )}
+            {isPlaner && (
               <NavLink to="/dispo" className={navClass}>
                 Dispo
               </NavLink>

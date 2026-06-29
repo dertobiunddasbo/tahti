@@ -20,7 +20,6 @@ interface PersonOpt {
   id: string
   name: string
   kuerzel: string | null
-  rolle: string
 }
 interface Shift {
   id: string
@@ -74,12 +73,18 @@ export default function DispoMatrix() {
       .eq('projekt_id', projekt.id)
       .order('start_zeit', { ascending: true })
       .then(({ data }) => setBloecke((data as Block[]) ?? []))
+    // Nur die Crew DIESER Produktion ist zuweisbar (Besetzung)
     supabase
-      .from('person_public')
-      .select('id, name, kuerzel, rolle')
-      .eq('org_id', projekt.org_id)
-      .order('name', { ascending: true })
-      .then(({ data }) => setPersonen((data as PersonOpt[]) ?? []))
+      .from('besetzung')
+      .select('person:person_id (id, name, kuerzel)')
+      .eq('projekt_id', projekt.id)
+      .then(({ data }) => {
+        const list = ((data as unknown as { person: PersonOpt | null }[]) ?? [])
+          .map((r) => r.person)
+          .filter((p): p is PersonOpt => !!p)
+          .sort((a, b) => a.name.localeCompare(b.name))
+        setPersonen(list)
+      })
   }, [projekt])
 
   const loadShifts = useCallback(() => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useProductions } from '../productions/ProductionProvider'
@@ -35,6 +35,8 @@ export default function Crew() {
   const [pSkills, setPSkills] = useState<Map<string, Set<string>>>(new Map())
   const [newSkill, setNewSkill] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const reload = useCallback(() => {
     if (!projekt) return
@@ -100,11 +102,31 @@ export default function Crew() {
     }
   }
 
-  async function removeFromTeam(id: string) {
+  function showToast(text: string, undo: () => void) {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast({ text, undo })
+    toastTimer.current = setTimeout(() => setToast(null), 6000)
+  }
+
+  async function removeFromTeam(b: BesetzungRow) {
+    if (!projekt) return
+    if (b.status === 'zugesagt' && !window.confirm('Diese Person hat zugesagt. Wirklich aus der Crew entfernen?')) return
     setError(null)
-    const { error } = await supabase.from('besetzung').delete().eq('id', id)
-    if (error) setError(error.message)
-    else reload()
+    const { error } = await supabase.from('besetzung').delete().eq('id', b.id)
+    if (error) return setError(error.message)
+    reload()
+    const payload = {
+      org_id: projekt.org_id,
+      projekt_id: projekt.id,
+      person_id: b.person_id,
+      status: b.status,
+      rolle_im_projekt: b.rolle_im_projekt,
+    }
+    showToast('Aus Crew entfernt', async () => {
+      const { error: e } = await supabase.from('besetzung').insert(payload)
+      if (e) setError(e.message)
+      else reload()
+    })
   }
 
   async function addSkill() {
@@ -307,7 +329,7 @@ export default function Crew() {
                         </option>
                       ))}
                     </select>
-                    <button onClick={() => removeFromTeam(b.id)} className="text-muted/60 hover:text-danger" title="Entfernen">
+                    <button onClick={() => removeFromTeam(b)} className="text-muted/60 hover:text-danger" title="Entfernen">
                       ×
                     </button>
                   </div>
@@ -351,6 +373,22 @@ export default function Crew() {
           )}
         </ul>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-line bg-elevated px-4 py-2 text-sm shadow-lg">
+          <span>{toast.text}</span>
+          <button
+            onClick={() => {
+              if (toastTimer.current) clearTimeout(toastTimer.current)
+              toast.undo()
+              setToast(null)
+            }}
+            className="font-medium text-accent-strong hover:underline"
+          >
+            Rückgängig
+          </button>
+        </div>
+      )}
     </div>
   )
 }

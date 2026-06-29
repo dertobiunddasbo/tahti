@@ -31,7 +31,11 @@ interface Shift {
   position_id: string | null
   schichtblock_id: string | null
   bestaetigt: boolean
+  typ: string
+  open_end: boolean
+  notiz: string | null
 }
+const SCHICHT_TYPEN = ['arbeit', 'standby', 'eigendispo', 'nachtwache'] as const
 interface RangeShift extends Shift {
   tag: string
 }
@@ -82,6 +86,7 @@ export default function DispoMatrix() {
   const [overCell, setOverCell] = useState<string | null>(null)
   const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [editShift, setEditShift] = useState<Shift | null>(null)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [rangeShifts, setRangeShifts] = useState<RangeShift[]>([])
   const [allShifts, setAllShifts] = useState<WarnShift[]>([])
@@ -142,7 +147,7 @@ export default function DispoMatrix() {
     if (!projekt) return
     supabase
       .from('schicht')
-      .select('id, person_id, position_id, schichtblock_id, bestaetigt')
+      .select('id, person_id, position_id, schichtblock_id, bestaetigt, typ, open_end, notiz')
       .eq('projekt_id', projekt.id)
       .eq('tag', tag)
       .then(({ data }) => setShifts((data as Shift[]) ?? []))
@@ -405,6 +410,27 @@ export default function DispoMatrix() {
     })
   }
 
+  async function saveEdit() {
+    if (!editShift) return
+    const { error } = await supabase
+      .from('schicht')
+      .update({
+        person_id: editShift.person_id,
+        position_id: editShift.position_id,
+        schichtblock_id: editShift.schichtblock_id,
+        typ: editShift.typ,
+        open_end: editShift.open_end,
+        notiz: editShift.notiz,
+        bestaetigt: editShift.bestaetigt,
+      })
+      .eq('id', editShift.id)
+    if (error) setError(error.message)
+    else {
+      setEditShift(null)
+      loadShifts()
+    }
+  }
+
   function cellShifts(positionId: string, blockId: string) {
     return shifts.filter((s) => s.position_id === positionId && s.schichtblock_id === blockId)
   }
@@ -633,15 +659,19 @@ export default function DispoMatrix() {
                                         : 'bg-canvas',
                                   ].join(' ')}
                                 >
-                                  <span className="flex items-center gap-1.5 truncate">
+                                  <button
+                                    onClick={() => setEditShift(s)}
+                                    title="Schicht bearbeiten"
+                                    className="flex items-center gap-1.5 truncate text-left hover:underline"
+                                  >
                                     <span
                                       className={[
-                                        'h-1.5 w-1.5 rounded-full',
+                                        'h-1.5 w-1.5 shrink-0 rounded-full',
                                         s.bestaetigt ? 'bg-ok' : 'bg-warn',
                                       ].join(' ')}
                                     />
                                     <span className="truncate">{p?.name ?? 'Unbekannt'}</span>
-                                  </span>
+                                  </button>
                                   <button
                                     onClick={() => remove(s, pos.location_id)}
                                     className="text-muted/60 opacity-0 transition hover:text-danger group-hover:opacity-100"
@@ -759,6 +789,125 @@ export default function DispoMatrix() {
           >
             Rückgängig
           </button>
+        </div>
+      )}
+
+      {editShift && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setEditShift(null)}
+        >
+          <div
+            className="w-full max-w-sm space-y-3 rounded-2xl border border-line bg-surface p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold tracking-tight">Schicht bearbeiten</h2>
+
+            <label className="block text-sm">
+              <span className="text-muted">Person</span>
+              <select
+                value={editShift.person_id ?? ''}
+                onChange={(e) => setEditShift({ ...editShift, person_id: e.target.value || null })}
+                className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+              >
+                <option value="">— offen —</option>
+                {personen.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-muted">Position</span>
+                <select
+                  value={editShift.position_id ?? ''}
+                  onChange={(e) => setEditShift({ ...editShift, position_id: e.target.value || null })}
+                  className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+                >
+                  {positionenSortiert.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-muted">Schichtblock</span>
+                <select
+                  value={editShift.schichtblock_id ?? ''}
+                  onChange={(e) => setEditShift({ ...editShift, schichtblock_id: e.target.value || null })}
+                  className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+                >
+                  {bloecke.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.label} ({b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="block text-sm">
+              <span className="text-muted">Typ</span>
+              <select
+                value={editShift.typ}
+                onChange={(e) => setEditShift({ ...editShift, typ: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm capitalize text-ink"
+              >
+                {SCHICHT_TYPEN.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-muted">Notiz</span>
+              <input
+                value={editShift.notiz ?? ''}
+                onChange={(e) => setEditShift({ ...editShift, notiz: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+              />
+            </label>
+
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editShift.open_end}
+                  onChange={(e) => setEditShift({ ...editShift, open_end: e.target.checked })}
+                />
+                Open End
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editShift.bestaetigt}
+                  onChange={(e) => setEditShift({ ...editShift, bestaetigt: e.target.checked })}
+                />
+                Bestätigt
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setEditShift(null)}
+                className="rounded-lg px-3 py-2 text-sm text-muted hover:text-ink"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={saveEdit}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:opacity-90"
+              >
+                Speichern
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

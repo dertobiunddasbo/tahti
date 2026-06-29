@@ -40,6 +40,7 @@ export default function Setup() {
     else reloadAll()
   }
   async function del(table: string, id: string) {
+    if (!window.confirm('Wirklich löschen? Zugewiesene Schichten/Positionen verlieren diese Zuordnung.')) return
     setError(null)
     const { error } = await supabase.from(table).delete().eq('id', id)
     if (error) setError(error.message)

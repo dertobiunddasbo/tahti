@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       manifest: {
-        name: 'liiku — Crew & Dispo',
-        short_name: 'liiku',
-        description: 'Crew-Dispo, Schichten und Call Sheets.',
+        name: 'tahti — Crew, Dispo, Call Sheet',
+        short_name: 'tahti',
+        description: 'Crew, Dispo, Call Sheet – alle im Bild',
         start_url: '/',
         display: 'standalone',
         background_color: '#f8fafc',

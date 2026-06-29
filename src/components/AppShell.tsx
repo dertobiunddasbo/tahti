@@ -21,7 +21,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface/90 px-4 py-3 backdrop-blur print:hidden">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5 font-mono text-base font-bold tracking-tight">
-            liiku
+            tahti
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
           </span>
           <nav className="flex flex-wrap items-center gap-1">

@@ -43,10 +43,10 @@ export default function Login() {
     <div className="flex min-h-full items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 shadow-[0_1px_0_0_var(--c-line)]">
         <h1 className="flex items-center gap-1.5 font-mono text-2xl font-bold tracking-tight">
-          liiku
+          tahti
           <span className="inline-block h-2 w-2 rounded-full bg-accent" />
         </h1>
-        <p className="mt-1 font-mono text-xs uppercase tracking-wide text-muted">Crew · Dispo · Call Sheets</p>
+        <p className="mt-1 text-sm text-muted">Crew, Dispo, Call Sheet – alle im Bild</p>
 
         {status === 'sent' ? (
           <div className="mt-6 rounded-lg bg-accent/10 p-4 text-sm text-accent-strong">

@@ -37,13 +37,23 @@ const dayFmt = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
+  timeZone: 'UTC',
 })
-const colFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })
+const colFmt = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'short',
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: 'UTC',
+})
 
+// Datums-Arithmetik konsequent in UTC, damit es in keiner Zeitzone verrutscht.
 function addDays(iso: string, n: number) {
-  const d = new Date(`${iso}T00:00:00`)
-  d.setDate(d.getDate() + n)
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
+}
+function dDate(iso: string) {
+  return new Date(`${iso}T00:00:00Z`)
 }
 
 export default function DispoMatrix() {
@@ -107,8 +117,8 @@ export default function DispoMatrix() {
     const start = projekt.start_datum ?? addDays(tag, -3)
     const end = projekt.end_datum ?? addDays(tag, 3)
     const out: string[] = []
-    let d = new Date(`${start}T00:00:00`)
-    const e = new Date(`${end}T00:00:00`)
+    let d = new Date(`${start}T00:00:00Z`)
+    const e = new Date(`${end}T00:00:00Z`)
     let guard = 0
     while (d <= e && guard < 60) {
       out.push(d.toISOString().slice(0, 10))
@@ -292,7 +302,7 @@ export default function DispoMatrix() {
               ← Vortag
             </button>
             <span className="text-sm font-medium capitalize">
-              {dayFmt.format(new Date(`${tag}T00:00:00`))}
+              {dayFmt.format(dDate(tag))}
             </span>
             <button
               onClick={() => setTag((t) => addDays(t, 1))}
@@ -420,7 +430,7 @@ export default function DispoMatrix() {
                       className="capitalize text-slate-600 hover:text-accent-600"
                       title="In Tagesansicht öffnen"
                     >
-                      {colFmt.format(new Date(`${d}T00:00:00`))}
+                      {colFmt.format(dDate(d))}
                     </button>
                   </th>
                 ))}

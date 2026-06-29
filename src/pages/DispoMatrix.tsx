@@ -189,8 +189,11 @@ export default function DispoMatrix() {
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {positionenSortiert.length === 0 || bloecke.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-400">
-          Keine Positionen/Schichtblöcke für diese Produktion. (Setup-UI folgt in Phase 2.)
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          Noch keine Positionen/Schichtblöcke.{' '}
+          <Link to="/setup" className="font-medium text-accent-600 hover:underline">
+            Jetzt im Setup einrichten →
+          </Link>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">

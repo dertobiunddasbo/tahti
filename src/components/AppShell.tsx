@@ -29,6 +29,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </NavLink>
             )}
             {isPlaner && (
+              <NavLink to="/setup" className={navClass}>
+                Setup
+              </NavLink>
+            )}
+            {isPlaner && (
               <NavLink to="/dispo" className={navClass}>
                 Dispo
               </NavLink>

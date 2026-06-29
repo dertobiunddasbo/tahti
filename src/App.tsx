@@ -5,6 +5,7 @@ import Login from './auth/Login'
 import CrewHome from './pages/CrewHome'
 import DispoMatrix from './pages/DispoMatrix'
 import Produktionen from './pages/Produktionen'
+import Setup from './pages/Setup'
 
 function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="flex min-h-full items-center justify-center px-4">{children}</div>
@@ -53,6 +54,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<CrewHome />} />
         {isPlaner && <Route path="/produktionen" element={<Produktionen />} />}
+        {isPlaner && <Route path="/setup" element={<Setup />} />}
         {isPlaner && <Route path="/dispo" element={<DispoMatrix />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

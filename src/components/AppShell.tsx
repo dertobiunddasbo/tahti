@@ -14,7 +14,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur print:hidden">
         <div className="flex items-center gap-4">
           <span className="text-base font-semibold tracking-tight">liiku</span>
           <nav className="flex items-center gap-1">

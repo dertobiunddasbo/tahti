@@ -1,0 +1,10 @@
+{
+  "name": "liiku — Crew & Dispo",
+  "short_name": "liiku",
+  "description": "Crew-Dispo, Schichten und Call Sheets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "icons": []
+}

@@ -127,6 +127,49 @@ export default function DispoMatrix() {
     [positionen],
   )
   const personMap = useMemo(() => new Map(personen.map((p) => [p.id, p])), [personen])
+  const blockById = useMemo(() => new Map(bloecke.map((b) => [b.id, b])), [bloecke])
+
+  // Konflikte: gleiche Person mit zeitlich überlappenden Schichten am selben Tag
+  const { conflictIds, conflictList } = useMemo(() => {
+    const win = (blockId: string | null) => {
+      const b = blockId ? blockById.get(blockId) : null
+      if (!b) return null
+      const s = new Date(`${tag}T${b.start_zeit}`)
+      let e = new Date(`${tag}T${b.ende_zeit}`)
+      if (e <= s) e = new Date(e.getTime() + 86400000) // Nachtschicht über Mitternacht
+      return { s, e }
+    }
+    const byPerson = new Map<string, Shift[]>()
+    for (const sh of shifts) {
+      if (!sh.person_id) continue
+      const arr = byPerson.get(sh.person_id) ?? []
+      arr.push(sh)
+      byPerson.set(sh.person_id, arr)
+    }
+    const ids = new Set<string>()
+    const seen = new Set<string>()
+    const list: { person: string; a: string; b: string }[] = []
+    for (const [pid, arr] of byPerson) {
+      for (let i = 0; i < arr.length; i++) {
+        for (let j = i + 1; j < arr.length; j++) {
+          const wi = win(arr[i].schichtblock_id)
+          const wj = win(arr[j].schichtblock_id)
+          if (wi && wj && wi.s < wj.e && wj.s < wi.e) {
+            ids.add(arr[i].id)
+            ids.add(arr[j].id)
+            const la = blockById.get(arr[i].schichtblock_id!)?.label ?? '?'
+            const lb = blockById.get(arr[j].schichtblock_id!)?.label ?? '?'
+            const key = `${pid}-${[la, lb].sort().join('-')}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              list.push({ person: personMap.get(pid)?.name ?? 'Unbekannt', a: la, b: lb })
+            }
+          }
+        }
+      }
+    }
+    return { conflictIds: ids, conflictList: list }
+  }, [shifts, blockById, personMap, tag])
 
   async function assign(positionId: string, blockId: string, personId: string, locationId: string | null) {
     if (!projekt || !personId) return
@@ -193,6 +236,13 @@ export default function DispoMatrix() {
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
+      {conflictList.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <span className="font-medium">⚠ Doppelbelegung:</span>{' '}
+          {conflictList.map((c) => `${c.person} (${c.a} ↔ ${c.b})`).join(' · ')}
+        </div>
+      )}
+
       {positionenSortiert.length === 0 || bloecke.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
           Noch keine Positionen/Schichtblöcke.{' '}
@@ -243,7 +293,13 @@ export default function DispoMatrix() {
                             return (
                               <div
                                 key={s.id}
-                                className="group flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1"
+                                title={conflictIds.has(s.id) ? 'Zeitliche Doppelbelegung' : undefined}
+                                className={[
+                                  'group flex items-center justify-between gap-2 rounded-lg px-2 py-1',
+                                  conflictIds.has(s.id)
+                                    ? 'bg-red-50 ring-1 ring-red-300'
+                                    : 'bg-slate-50',
+                                ].join(' ')}
                               >
                                 <span className="flex items-center gap-1.5 truncate">
                                   <span

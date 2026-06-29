@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useProductions } from '../productions/ProductionProvider'
@@ -80,6 +80,8 @@ export default function DispoMatrix() {
   const [crew, setCrew] = useState<CrewMember[]>([])
   const [pSkills, setPSkills] = useState<Map<string, string[]>>(new Map())
   const [overCell, setOverCell] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [rangeShifts, setRangeShifts] = useState<RangeShift[]>([])
   const [allShifts, setAllShifts] = useState<WarnShift[]>([])
@@ -369,10 +371,38 @@ export default function DispoMatrix() {
     else loadShifts()
   }
 
-  async function remove(shiftId: string) {
-    const { error } = await supabase.from('schicht').delete().eq('id', shiftId)
-    if (error) setError(error.message)
-    else loadShifts()
+  function showToast(text: string, undo: () => void) {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast({ text, undo })
+    toastTimer.current = setTimeout(() => setToast(null), 6000)
+  }
+
+  async function remove(s: Shift, locationId: string | null) {
+    if (!projekt) return
+    if (s.bestaetigt && !window.confirm('Diese Schicht ist von der Crew bestätigt. Wirklich entfernen?')) return
+    const { error } = await supabase.from('schicht').delete().eq('id', s.id)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    loadShifts()
+    // Undo: Zuweisung mit gleichen Daten neu anlegen (neue id)
+    const payload = {
+      org_id: projekt.org_id,
+      projekt_id: projekt.id,
+      person_id: s.person_id,
+      position_id: s.position_id,
+      schichtblock_id: s.schichtblock_id,
+      location_id: locationId,
+      tag,
+      typ: 'arbeit',
+      bestaetigt: s.bestaetigt,
+    }
+    showToast('Schicht entfernt', async () => {
+      const { error: e } = await supabase.from('schicht').insert(payload)
+      if (e) setError(e.message)
+      else loadShifts()
+    })
   }
 
   function cellShifts(positionId: string, blockId: string) {
@@ -613,7 +643,7 @@ export default function DispoMatrix() {
                                     <span className="truncate">{p?.name ?? 'Unbekannt'}</span>
                                   </span>
                                   <button
-                                    onClick={() => remove(s.id)}
+                                    onClick={() => remove(s, pos.location_id)}
                                     className="text-muted/60 opacity-0 transition hover:text-danger group-hover:opacity-100"
                                     title="Entfernen"
                                   >
@@ -713,6 +743,22 @@ export default function DispoMatrix() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-line bg-elevated px-4 py-2 text-sm shadow-lg">
+          <span>{toast.text}</span>
+          <button
+            onClick={() => {
+              if (toastTimer.current) clearTimeout(toastTimer.current)
+              toast.undo()
+              setToast(null)
+            }}
+            className="font-medium text-accent-strong hover:underline"
+          >
+            Rückgängig
+          </button>
         </div>
       )}
     </div>

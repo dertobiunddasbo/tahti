@@ -67,7 +67,7 @@ export default function Setup() {
   const submitPos = (e: FormEvent) => { e.preventDefault(); if (!pos.label.trim()) return; insert('position', { label: pos.label.trim(), department_id: pos.department_id || null, location_id: pos.location_id || null }); setPos({ label: '', department_id: '', location_id: '' }) }
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-3xl space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Setup</h1>
         <p className="mt-1 text-sm text-muted">{projekt.name} · Struktur einrichten</p>

@@ -183,7 +183,7 @@ export default function Produktionen() {
           <p className="mt-1 text-sm text-muted">Lege oben deine erste Produktion an.</p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {productions.map((p) => {
             const st = status(p)
             return (

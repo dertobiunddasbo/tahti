@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useProductions } from '../productions/ProductionProvider'
+import type { CrewStatus } from '../lib/types'
 
 interface Position {
   id: string
@@ -20,6 +21,9 @@ interface PersonOpt {
   id: string
   name: string
   kuerzel: string | null
+}
+interface CrewMember extends PersonOpt {
+  status: CrewStatus
 }
 interface Shift {
   id: string
@@ -73,6 +77,8 @@ export default function DispoMatrix() {
   const [positionen, setPositionen] = useState<Position[]>([])
   const [bloecke, setBloecke] = useState<Block[]>([])
   const [personen, setPersonen] = useState<PersonOpt[]>([])
+  const [crew, setCrew] = useState<CrewMember[]>([])
+  const [overCell, setOverCell] = useState<string | null>(null)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [rangeShifts, setRangeShifts] = useState<RangeShift[]>([])
   const [allShifts, setAllShifts] = useState<WarnShift[]>([])
@@ -101,14 +107,16 @@ export default function DispoMatrix() {
       .then(({ data }) => setBloecke((data as Block[]) ?? []))
     supabase
       .from('besetzung')
-      .select('person:person_id (id, name, kuerzel)')
+      .select('status, person:person_id (id, name, kuerzel)')
       .eq('projekt_id', projekt.id)
       .then(({ data }) => {
-        const list = ((data as unknown as { person: PersonOpt | null }[]) ?? [])
-          .map((r) => r.person)
-          .filter((p): p is PersonOpt => !!p)
+        const rows = (data as unknown as { status: CrewStatus; person: PersonOpt | null }[]) ?? []
+        const list = rows
+          .filter((r) => r.person)
+          .map((r) => ({ ...(r.person as PersonOpt), status: r.status }))
           .sort((a, b) => a.name.localeCompare(b.name))
-        setPersonen(list)
+        setCrew(list)
+        setPersonen(list.map(({ status: _status, ...p }) => p))
       })
   }, [projekt])
 
@@ -201,6 +209,25 @@ export default function DispoMatrix() {
   )
   const personMap = useMemo(() => new Map(personen.map((p) => [p.id, p])), [personen])
   const blockById = useMemo(() => new Map(bloecke.map((b) => [b.id, b])), [bloecke])
+
+  // Auslastung je Person am gewählten Tag (Blöcke + Stunden) für die Panel-Hinweise
+  const dayLoad = useMemo(() => {
+    const m = new Map<string, { blocks: string[]; ms: number }>()
+    for (const sh of allShifts) {
+      if (!sh.person_id || sh.tag !== tag) continue
+      const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
+      const cur = m.get(sh.person_id) ?? { blocks: [], ms: 0 }
+      if (b) {
+        cur.blocks.push(b.label)
+        const s = new Date(`${tag}T${b.start_zeit}Z`).getTime()
+        let e = new Date(`${tag}T${b.ende_zeit}Z`).getTime()
+        if (e <= s) e += 86400000
+        cur.ms += e - s
+      }
+      m.set(sh.person_id, cur)
+    }
+    return m
+  }, [allShifts, tag, blockById])
 
   // Konflikte: gleiche Person mit zeitlich überlappenden Schichten am Tag
   const { conflictIds, conflictList } = useMemo(() => {
@@ -383,7 +410,56 @@ export default function DispoMatrix() {
           </Link>
         </div>
       ) : view === 'tag' ? (
-        <>
+        <div className="lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start lg:gap-5">
+          {/* Crew-Panel (Desktop): Karte auf eine Schicht ziehen → zuweisen */}
+          <aside className="mb-4 hidden lg:sticky lg:top-20 lg:mb-0 lg:block">
+            <div className="space-y-4 rounded-2xl border border-line bg-surface p-3">
+              <div className="font-mono text-xs uppercase tracking-wide text-muted">
+                Crew · ziehen → zuweisen
+              </div>
+              {[
+                { label: 'Verfügbar', list: crew.filter((m) => m.status === 'zugesagt') },
+                { label: 'Angefragt', list: crew.filter((m) => m.status === 'eingeladen') },
+              ].map((grp) => (
+                <div key={grp.label} className="space-y-1.5">
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-muted/70">
+                    {grp.label} ({grp.list.length})
+                  </div>
+                  {grp.list.map((m) => {
+                    const load = dayLoad.get(m.id)
+                    const hrs = load ? load.ms / 3600000 : 0
+                    return (
+                      <div
+                        key={m.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', m.id)
+                          e.dataTransfer.effectAllowed = 'copy'
+                        }}
+                        className="cursor-grab rounded-lg border border-line bg-canvas px-2.5 py-1.5 transition hover:border-accent active:cursor-grabbing"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium">{m.name}</span>
+                          {m.kuerzel && <span className="font-mono text-[10px] text-muted">{m.kuerzel}</span>}
+                        </div>
+                        <div
+                          className={[
+                            'mt-0.5 font-mono text-[10px]',
+                            !load ? 'text-ok' : hrs > 10 ? 'text-danger' : 'text-muted',
+                          ].join(' ')}
+                        >
+                          {load ? `${load.blocks.join('+')} · ${hrs.toFixed(1)} h` : 'frei'}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {grp.list.length === 0 && <div className="text-[10px] text-muted/60">—</div>}
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <div className="min-w-0 space-y-4">
           <div className="flex items-center justify-between rounded-xl border border-line bg-surface px-3 py-2">
             <button
               onClick={() => setTag((t) => addDays(t, -1))}
@@ -450,8 +526,26 @@ export default function DispoMatrix() {
                     </td>
                     {bloecke.map((b) => {
                       const cs = cellShifts(pos.id, b.id)
+                      const cellKey = `${pos.id}:${b.id}`
                       return (
-                        <td key={b.id} className="p-2 align-top">
+                        <td
+                          key={b.id}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            setOverCell(cellKey)
+                          }}
+                          onDragLeave={() => setOverCell((c) => (c === cellKey ? null : c))}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            const id = e.dataTransfer.getData('text/plain')
+                            setOverCell(null)
+                            if (id) assign(pos.id, b.id, id, pos.location_id)
+                          }}
+                          className={[
+                            'p-2 align-top transition',
+                            overCell === cellKey ? 'bg-accent/10 ring-2 ring-inset ring-accent/50' : '',
+                          ].join(' ')}
+                        >
                           <div className="space-y-1.5">
                             {cs.map((s) => {
                               const p = s.person_id ? personMap.get(s.person_id) : null
@@ -517,7 +611,8 @@ export default function DispoMatrix() {
               </tbody>
             </table>
           </div>
-        </>
+          </div>
+        </div>
       ) : (
         // Zeitraum-Übersicht: Positionen × Tage (read-only; Tag-Header springt in Tagesansicht)
         <div className="overflow-x-auto rounded-2xl border border-line bg-surface">

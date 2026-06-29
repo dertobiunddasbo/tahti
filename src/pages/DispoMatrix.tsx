@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useProductions } from '../productions/ProductionProvider'
 
-interface Projekt {
-  id: string
-  name: string
-  org_id: string
-  start_datum: string | null
-  end_datum: string | null
-}
 interface Position {
   id: string
   label: string
@@ -49,8 +44,7 @@ function addDays(iso: string, n: number) {
 }
 
 export default function DispoMatrix() {
-  const [projekte, setProjekte] = useState<Projekt[]>([])
-  const [projektId, setProjektId] = useState<string | null>(null)
+  const { selected: projekt } = useProductions()
   const [positionen, setPositionen] = useState<Position[]>([])
   const [bloecke, setBloecke] = useState<Block[]>([])
   const [personen, setPersonen] = useState<PersonOpt[]>([])
@@ -58,27 +52,13 @@ export default function DispoMatrix() {
   const [tag, setTag] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [error, setError] = useState<string | null>(null)
 
-  const projekt = useMemo(() => projekte.find((p) => p.id === projektId) ?? null, [projekte, projektId])
-
-  // Projekte laden
+  // Tag initial auf Projektstart (bzw. heute, falls schon im Zeitraum)
   useEffect(() => {
-    supabase
-      .from('projekt')
-      .select('id, name, org_id, start_datum, end_datum')
-      .order('start_datum', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) return setError(error.message)
-        const list = (data as Projekt[]) ?? []
-        setProjekte(list)
-        if (list.length && !projektId) {
-          setProjektId(list[0].id)
-          if (list[0].start_datum) {
-            const today = new Date().toISOString().slice(0, 10)
-            setTag(today < list[0].start_datum ? list[0].start_datum : today)
-          }
-        }
-      })
-  }, [projektId])
+    if (projekt?.start_datum) {
+      const today = new Date().toISOString().slice(0, 10)
+      setTag(today < projekt.start_datum ? projekt.start_datum : today)
+    }
+  }, [projekt?.id, projekt?.start_datum])
 
   // Stammdaten zum Projekt
   useEffect(() => {
@@ -102,7 +82,6 @@ export default function DispoMatrix() {
       .then(({ data }) => setPersonen((data as PersonOpt[]) ?? []))
   }, [projekt])
 
-  // Schichten des Tages laden
   const loadShifts = useCallback(() => {
     if (!projekt) return
     supabase
@@ -170,26 +149,24 @@ export default function DispoMatrix() {
     return shifts.filter((s) => s.position_id === positionId && s.schichtblock_id === blockId)
   }
 
+  if (!projekt) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+        Keine Produktion gewählt.{' '}
+        <Link to="/produktionen" className="font-medium text-accent-600 hover:underline">
+          Produktion anlegen oder auswählen →
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dispo-Matrix</h1>
-          <p className="mt-1 text-sm text-slate-500">Position × Schichtblock · Live-Sync</p>
-        </div>
-        {projekte.length > 1 && (
-          <select
-            value={projektId ?? ''}
-            onChange={(e) => setProjektId(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-          >
-            {projekte.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        )}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Dispo-Matrix</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {projekt.name} · Position × Schichtblock · Live-Sync
+        </p>
       </div>
 
       {/* Tag-Navigation */}
@@ -213,7 +190,7 @@ export default function DispoMatrix() {
 
       {positionenSortiert.length === 0 || bloecke.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-400">
-          Keine Positionen/Schichtblöcke für dieses Projekt.
+          Keine Positionen/Schichtblöcke für diese Produktion. (Setup-UI folgt in Phase 2.)
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">

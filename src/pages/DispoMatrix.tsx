@@ -78,6 +78,7 @@ export default function DispoMatrix() {
   const [bloecke, setBloecke] = useState<Block[]>([])
   const [personen, setPersonen] = useState<PersonOpt[]>([])
   const [crew, setCrew] = useState<CrewMember[]>([])
+  const [pSkills, setPSkills] = useState<Map<string, string[]>>(new Map())
   const [overCell, setOverCell] = useState<string | null>(null)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [rangeShifts, setRangeShifts] = useState<RangeShift[]>([])
@@ -117,6 +118,20 @@ export default function DispoMatrix() {
           .sort((a, b) => a.name.localeCompare(b.name))
         setCrew(list)
         setPersonen(list.map(({ status: _status, ...p }) => p))
+      })
+    supabase
+      .from('person_skill')
+      .select('person_id, skill:skill_id!inner (name, org_id)')
+      .eq('skill.org_id', projekt.org_id)
+      .then(({ data }) => {
+        const m = new Map<string, string[]>()
+        for (const r of (data as unknown as { person_id: string; skill: { name: string } | null }[]) ?? []) {
+          if (!r.skill) continue
+          const arr = m.get(r.person_id) ?? []
+          arr.push(r.skill.name)
+          m.set(r.person_id, arr)
+        }
+        setPSkills(m)
       })
   }, [projekt])
 
@@ -272,9 +287,10 @@ export default function DispoMatrix() {
   }, [shifts, blockById, personMap, tag])
 
   // ArbZG-Warnungen: < 11 h Ruhezeit (§5) und > 10 h/Tag (§3), tagesübergreifend
-  const { warnIds, warnList } = useMemo(() => {
+  const { warnIds, warnList, warnPersons } = useMemo(() => {
     const ids = new Set<string>()
     const seen = new Set<string>()
+    const persons = new Set<string>()
     const msgs: { person: string; text: string }[] = []
     const interval = (sh: WarnShift) => {
       const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
@@ -306,6 +322,7 @@ export default function DispoMatrix() {
             const k = `rest-${arr[i - 1]!.id}-${arr[i]!.id}`
             if (!seen.has(k)) {
               seen.add(k)
+              persons.add(pid)
               msgs.push({ person: name, text: `Ruhezeit nur ${(gap / 3600000).toFixed(1)} h (<11 h)` })
             }
           }
@@ -326,13 +343,14 @@ export default function DispoMatrix() {
             const k = `day-${pid}-${d}`
             if (!seen.has(k)) {
               seen.add(k)
+              persons.add(pid)
               msgs.push({ person: name, text: `${(info.sum / 3600000).toFixed(1)} h am Tag (>10 h)` })
             }
           }
         }
       }
     }
-    return { warnIds: ids, warnList: msgs }
+    return { warnIds: ids, warnList: msgs, warnPersons: persons }
   }, [allShifts, blockById, personMap, tag])
 
   async function assign(positionId: string, blockId: string, personId: string, locationId: string | null) {
@@ -428,6 +446,11 @@ export default function DispoMatrix() {
                   {grp.list.map((m) => {
                     const load = dayLoad.get(m.id)
                     const hrs = load ? load.ms / 3600000 : 0
+                    const sk = pSkills.get(m.id) ?? []
+                    const cond = warnPersons.has(m.id) ? 'red' : hrs > 8 ? 'amber' : 'green'
+                    const barColor = cond === 'red' ? 'bg-danger' : cond === 'amber' ? 'bg-warn' : 'bg-ok'
+                    const labelColor = cond === 'red' ? 'text-danger' : cond === 'amber' ? 'text-warn' : 'text-muted'
+                    const pct = Math.min(hrs / 12, 1) * 100
                     return (
                       <div
                         key={m.id}
@@ -438,17 +461,29 @@ export default function DispoMatrix() {
                         }}
                         className="cursor-grab rounded-lg border border-line bg-canvas px-2.5 py-1.5 transition hover:border-accent active:cursor-grabbing"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium">{m.name}</span>
-                          {m.kuerzel && <span className="font-mono text-[10px] text-muted">{m.kuerzel}</span>}
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 font-mono text-[10px] font-bold text-accent-strong">
+                            {(m.kuerzel ?? m.name.slice(0, 2)).toUpperCase()}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.name}</span>
                         </div>
-                        <div
-                          className={[
-                            'mt-0.5 font-mono text-[10px]',
-                            !load ? 'text-ok' : hrs > 10 ? 'text-danger' : 'text-muted',
-                          ].join(' ')}
-                        >
-                          {load ? `${load.blocks.join('+')} · ${hrs.toFixed(1)} h` : 'frei'}
+                        {sk.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {sk.slice(0, 3).map((s) => (
+                              <span key={s} className="rounded bg-line/50 px-1.5 py-0.5 text-[9px] text-muted">
+                                {s}
+                              </span>
+                            ))}
+                            {sk.length > 3 && <span className="text-[9px] text-muted/60">+{sk.length - 3}</span>}
+                          </div>
+                        )}
+                        <div className="mt-1.5 flex items-center gap-1.5" title={load ? load.blocks.join(' + ') : 'frei'}>
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line/50">
+                            <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className={`font-mono text-[9px] ${labelColor}`}>
+                            {load ? `${hrs.toFixed(1)}h` : 'frei'}
+                          </span>
                         </div>
                       </div>
                     )

@@ -12,6 +12,7 @@ interface BesetzungRow {
   rolle_im_projekt: string | null
   person: { id: string; name: string; email: string; mobil: string | null } | null
 }
+interface Skill { id: string; name: string }
 
 const STATUS: { value: CrewStatus; label: string; cls: string }[] = [
   { value: 'eingeladen', label: 'eingeladen', cls: 'bg-warn/15 text-warn' },
@@ -30,6 +31,10 @@ export default function Crew() {
   const [addId, setAddId] = useState('')
   const [open, setOpen] = useState(false)
   const [neu, setNeu] = useState({ name: '', email: '', mobil: '', rolle: 'crew' as SystemRolle })
+  const [skills, setSkills] = useState<Skill[]>([])
+  const [pSkills, setPSkills] = useState<Map<string, Set<string>>>(new Map())
+  const [newSkill, setNewSkill] = useState('')
+  const [expanded, setExpanded] = useState<string | null>(null)
 
   const reload = useCallback(() => {
     if (!projekt) return
@@ -44,6 +49,25 @@ export default function Crew() {
       .select('id, person_id, status, rolle_im_projekt, person:person_id (id, name, email, mobil)')
       .eq('projekt_id', projekt.id)
       .then(({ data }) => setBesetzung((data as unknown as BesetzungRow[]) ?? []))
+    supabase
+      .from('skill')
+      .select('id, name')
+      .eq('org_id', projekt.org_id)
+      .order('sortierung')
+      .then(({ data }) => setSkills((data as Skill[]) ?? []))
+    supabase
+      .from('person_skill')
+      .select('person_id, skill_id, skill:skill_id!inner (org_id)')
+      .eq('skill.org_id', projekt.org_id)
+      .then(({ data }) => {
+        const m = new Map<string, Set<string>>()
+        for (const r of (data as unknown as { person_id: string; skill_id: string }[]) ?? []) {
+          const set = m.get(r.person_id) ?? new Set<string>()
+          set.add(r.skill_id)
+          m.set(r.person_id, set)
+        }
+        setPSkills(m)
+      })
   }, [projekt])
 
   useEffect(() => {
@@ -52,6 +76,7 @@ export default function Crew() {
 
   const imTeam = useMemo(() => new Set(besetzung.map((b) => b.person_id)), [besetzung])
   const verfuegbar = useMemo(() => pool.filter((p) => !imTeam.has(p.id)), [pool, imTeam])
+  const skillById = useMemo(() => new Map(skills.map((s) => [s.id, s.name])), [skills])
 
   async function addToTeam(personId: string) {
     if (!projekt || !personId) return
@@ -80,6 +105,40 @@ export default function Crew() {
     const { error } = await supabase.from('besetzung').delete().eq('id', id)
     if (error) setError(error.message)
     else reload()
+  }
+
+  async function addSkill() {
+    if (!projekt || !newSkill.trim()) return
+    setError(null)
+    const { error } = await supabase
+      .from('skill')
+      .insert({ org_id: projekt.org_id, name: newSkill.trim(), sortierung: skills.length + 1 })
+    if (error) setError(error.message)
+    else {
+      setNewSkill('')
+      reload()
+    }
+  }
+  async function deleteSkill(id: string) {
+    setError(null)
+    const { error } = await supabase.from('skill').delete().eq('id', id)
+    if (error) setError(error.message)
+    else reload()
+  }
+  async function togglePersonSkill(personId: string, skillId: string, on: boolean) {
+    setError(null)
+    if (on) {
+      const { error } = await supabase.from('person_skill').insert({ person_id: personId, skill_id: skillId })
+      if (error) return setError(error.message)
+    } else {
+      const { error } = await supabase
+        .from('person_skill')
+        .delete()
+        .eq('person_id', personId)
+        .eq('skill_id', skillId)
+      if (error) return setError(error.message)
+    }
+    reload()
   }
 
   async function createPerson(e: FormEvent) {
@@ -176,36 +235,117 @@ export default function Crew() {
         </button>
       </div>
 
+      {/* Skill-Katalog (Firma) */}
+      <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
+        <div className="font-mono text-xs uppercase tracking-wide text-muted">Skills (Firma)</div>
+        <div className="flex flex-wrap gap-1.5">
+          {skills.map((s) => (
+            <span
+              key={s.id}
+              className="group inline-flex items-center gap-1 rounded-full bg-line/40 px-2.5 py-1 text-xs"
+            >
+              {s.name}
+              <button
+                onClick={() => deleteSkill(s.id)}
+                className="text-muted/60 hover:text-danger"
+                title="Skill löschen"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {skills.length === 0 && <span className="text-xs text-muted">Noch keine Skills im Katalog.</span>}
+        </div>
+        <div className="flex gap-2">
+          <input
+            className={`${input} flex-1`}
+            placeholder="Neuer Skill (z. B. Ü-Wagen)"
+            value={newSkill}
+            onChange={(e) => setNewSkill(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addSkill()}
+          />
+          <button
+            onClick={addSkill}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90"
+          >
+            + Skill
+          </button>
+        </div>
+      </div>
+
       {/* Besetzungsliste */}
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-4 py-2 text-sm font-medium text-muted">
           Team ({besetzung.length})
         </div>
         <ul className="divide-y divide-line">
-          {besetzung.map((b) => (
-            <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{b.person?.name ?? 'Unbekannt'}</div>
-                <div className="truncate text-xs text-muted">{b.person?.email}</div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <select
-                  value={b.status}
-                  onChange={(e) => setStatus(b.id, e.target.value as CrewStatus)}
-                  className={`rounded-full px-2 py-1 text-xs font-medium ${STATUS.find((s) => s.value === b.status)?.cls ?? ''}`}
-                >
-                  {STATUS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-                <button onClick={() => removeFromTeam(b.id)} className="text-muted/60 hover:text-danger" title="Entfernen">
-                  ×
-                </button>
-              </div>
-            </li>
-          ))}
+          {besetzung.map((b) => {
+            const mySkills = pSkills.get(b.person_id) ?? new Set<string>()
+            return (
+              <li key={b.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{b.person?.name ?? 'Unbekannt'}</div>
+                    <div className="truncate text-xs text-muted">{b.person?.email}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={() => setExpanded((e) => (e === b.person_id ? null : b.person_id))}
+                      className="rounded-lg border border-line px-2 py-1 text-xs text-muted hover:text-ink"
+                      title="Skills bearbeiten"
+                    >
+                      Skills
+                    </button>
+                    <select
+                      value={b.status}
+                      onChange={(e) => setStatus(b.id, e.target.value as CrewStatus)}
+                      className={`rounded-full px-2 py-1 text-xs font-medium ${STATUS.find((s) => s.value === b.status)?.cls ?? ''}`}
+                    >
+                      {STATUS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button onClick={() => removeFromTeam(b.id)} className="text-muted/60 hover:text-danger" title="Entfernen">
+                      ×
+                    </button>
+                  </div>
+                </div>
+
+                {mySkills.size > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {[...mySkills].map((sid) => (
+                      <span key={sid} className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-accent-strong">
+                        {skillById.get(sid) ?? '?'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {expanded === b.person_id && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 rounded-lg bg-canvas p-2">
+                    {skills.map((s) => {
+                      const on = mySkills.has(s.id)
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => togglePersonSkill(b.person_id, s.id, !on)}
+                          className={[
+                            'rounded-full px-2.5 py-1 text-xs transition',
+                            on ? 'bg-accent text-accent-ink' : 'bg-line/40 text-muted hover:text-ink',
+                          ].join(' ')}
+                        >
+                          {s.name}
+                        </button>
+                      )
+                    })}
+                    {skills.length === 0 && <span className="text-xs text-muted">Lege oben Skills an.</span>}
+                  </div>
+                )}
+              </li>
+            )
+          })}
           {besetzung.length === 0 && (
             <li className="px-4 py-6 text-center text-sm text-muted">Noch niemand in der Crew.</li>
           )}

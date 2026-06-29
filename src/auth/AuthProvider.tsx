@@ -13,6 +13,7 @@ interface AuthState {
   /** True, wenn die Person in irgendeiner Org admin/disponent/lead ist. */
   isPlaner: boolean
   signInWithOtp: (email: string) => Promise<{ error: string | null }>
+  signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -72,6 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }
 
+  async function signInWithPassword(email: string, password: string) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    return { error: error?.message ?? null }
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
@@ -80,7 +86,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ loading, session, person, memberships, isPlaner, signInWithOtp, signOut }}
+      value={{
+        loading,
+        session,
+        person,
+        memberships,
+        isPlaner,
+        signInWithOtp,
+        signInWithPassword,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>

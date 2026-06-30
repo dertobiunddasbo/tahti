@@ -35,6 +35,8 @@ interface Shift {
   typ: string
   open_end: boolean
   notiz: string | null
+  start_zeit: string | null
+  ende_zeit: string | null
 }
 const SCHICHT_TYPEN = ['arbeit', 'standby', 'eigendispo', 'nachtwache'] as const
 interface RangeShift extends Shift {
@@ -70,6 +72,8 @@ interface WarnShift {
   person_id: string | null
   schichtblock_id: string | null
   tag: string
+  start_zeit: string | null
+  ende_zeit: string | null
 }
 
 // ArbZG-nahe Schwellen: § 5 (11 h Ruhezeit), § 3 (max. 10 h/Tag)
@@ -160,7 +164,7 @@ export default function DispoMatrix() {
     if (!projekt) return
     supabase
       .from('schicht')
-      .select('id, person_id, position_id, schichtblock_id, bestaetigt, typ, open_end, notiz')
+      .select('id, person_id, position_id, schichtblock_id, bestaetigt, typ, open_end, notiz, start_zeit, ende_zeit')
       .eq('projekt_id', projekt.id)
       .eq('tag', tag)
       .then(({ data }) => setShifts((data as Shift[]) ?? []))
@@ -187,7 +191,7 @@ export default function DispoMatrix() {
     if (!projekt || days.length === 0) return
     supabase
       .from('schicht')
-      .select('id, person_id, position_id, schichtblock_id, bestaetigt, tag')
+      .select('id, person_id, position_id, schichtblock_id, bestaetigt, tag, start_zeit, ende_zeit')
       .eq('projekt_id', projekt.id)
       .gte('tag', days[0])
       .lte('tag', days[days.length - 1])
@@ -199,7 +203,7 @@ export default function DispoMatrix() {
     if (!projekt) return
     supabase
       .from('schicht')
-      .select('id, person_id, schichtblock_id, tag')
+      .select('id, person_id, schichtblock_id, tag, start_zeit, ende_zeit')
       .eq('projekt_id', projekt.id)
       .then(({ data }) => setAllShifts((data as WarnShift[]) ?? []))
   }, [projekt])
@@ -256,32 +260,45 @@ export default function DispoMatrix() {
   // Spalten der Tagesmatrix = nur Blöcke des gewählten Drehtags
   const dayBloecke = useMemo(() => bloecke.filter((b) => b.tag === tag), [bloecke, tag])
 
+  // Effektive Zeit einer Schicht: eigener Override sonst Block-Zeit (HH:MM[:SS]).
+  // Null, wenn weder Override noch Block eine Zeit liefern.
+  const effTimes = useCallback(
+    (sh: { start_zeit: string | null; ende_zeit: string | null; schichtblock_id: string | null }) => {
+      const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
+      const start = sh.start_zeit ?? b?.start_zeit ?? null
+      const ende = sh.ende_zeit ?? b?.ende_zeit ?? null
+      return start && ende ? { start, ende } : null
+    },
+    [blockById],
+  )
+
   // Auslastung je Person am gewählten Tag (Blöcke + Stunden) für die Panel-Hinweise
   const dayLoad = useMemo(() => {
     const m = new Map<string, { blocks: string[]; ms: number }>()
     for (const sh of allShifts) {
       if (!sh.person_id || sh.tag !== tag) continue
       const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
+      const et = effTimes(sh)
       const cur = m.get(sh.person_id) ?? { blocks: [], ms: 0 }
-      if (b) {
-        cur.blocks.push(b.label)
-        const s = new Date(`${tag}T${b.start_zeit}Z`).getTime()
-        let e = new Date(`${tag}T${b.ende_zeit}Z`).getTime()
+      if (b) cur.blocks.push(b.label)
+      if (et) {
+        const s = new Date(`${tag}T${et.start}Z`).getTime()
+        let e = new Date(`${tag}T${et.ende}Z`).getTime()
         if (e <= s) e += 86400000
         cur.ms += e - s
       }
       m.set(sh.person_id, cur)
     }
     return m
-  }, [allShifts, tag, blockById])
+  }, [allShifts, tag, blockById, effTimes])
 
   // Konflikte: gleiche Person mit zeitlich überlappenden Schichten am Tag
   const { conflictIds, conflictList } = useMemo(() => {
-    const win = (blockId: string | null) => {
-      const b = blockId ? blockById.get(blockId) : null
-      if (!b) return null
-      const s = new Date(`${tag}T${b.start_zeit}`)
-      let e = new Date(`${tag}T${b.ende_zeit}`)
+    const win = (sh: Shift) => {
+      const et = effTimes(sh)
+      if (!et) return null
+      const s = new Date(`${tag}T${et.start}`)
+      let e = new Date(`${tag}T${et.ende}`)
       if (e <= s) e = new Date(e.getTime() + 86400000)
       return { s, e }
     }
@@ -298,8 +315,8 @@ export default function DispoMatrix() {
     for (const [pid, arr] of byPerson) {
       for (let i = 0; i < arr.length; i++) {
         for (let j = i + 1; j < arr.length; j++) {
-          const wi = win(arr[i].schichtblock_id)
-          const wj = win(arr[j].schichtblock_id)
+          const wi = win(arr[i])
+          const wj = win(arr[j])
           if (wi && wj && wi.s < wj.e && wj.s < wi.e) {
             ids.add(arr[i].id)
             ids.add(arr[j].id)
@@ -315,7 +332,7 @@ export default function DispoMatrix() {
       }
     }
     return { conflictIds: ids, conflictList: list }
-  }, [shifts, blockById, personMap, tag])
+  }, [shifts, blockById, personMap, tag, effTimes])
 
   // ArbZG-Warnungen: < 11 h Ruhezeit (§5) und > 10 h/Tag (§3), tagesübergreifend
   const { warnIds, warnList, warnPersons } = useMemo(() => {
@@ -324,10 +341,10 @@ export default function DispoMatrix() {
     const persons = new Set<string>()
     const msgs: { person: string; text: string }[] = []
     const interval = (sh: WarnShift) => {
-      const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
-      if (!b) return null
-      const s = new Date(`${sh.tag}T${b.start_zeit}Z`)
-      let e = new Date(`${sh.tag}T${b.ende_zeit}Z`)
+      const et = effTimes(sh)
+      if (!et) return null
+      const s = new Date(`${sh.tag}T${et.start}Z`)
+      let e = new Date(`${sh.tag}T${et.ende}Z`)
       if (e <= s) e = new Date(e.getTime() + 86400000)
       return { id: sh.id, tag: sh.tag, start: s.getTime(), end: e.getTime(), dur: e.getTime() - s.getTime() }
     }
@@ -382,7 +399,7 @@ export default function DispoMatrix() {
       }
     }
     return { warnIds: ids, warnList: msgs, warnPersons: persons }
-  }, [allShifts, blockById, personMap, tag])
+  }, [allShifts, blockById, personMap, tag, effTimes])
 
   async function assign(positionId: string, blockId: string, personId: string, locationId: string | null) {
     if (!projekt || !personId) return
@@ -425,6 +442,8 @@ export default function DispoMatrix() {
       tag,
       typ: 'arbeit',
       bestaetigt: s.bestaetigt,
+      start_zeit: s.start_zeit,
+      ende_zeit: s.ende_zeit,
     }
     showToast('Schicht entfernt', async () => {
       const { error: e } = await supabase.from('schicht').insert(payload)
@@ -445,6 +464,8 @@ export default function DispoMatrix() {
         open_end: editShift.open_end,
         notiz: editShift.notiz,
         bestaetigt: editShift.bestaetigt,
+        start_zeit: editShift.start_zeit,
+        ende_zeit: editShift.ende_zeit,
       })
       .eq('id', editShift.id)
     if (error) setError(error.message)
@@ -555,6 +576,8 @@ export default function DispoMatrix() {
             typ: s.typ,
             open_end: s.open_end,
             notiz: s.notiz,
+            start_zeit: s.start_zeit,
+            ende_zeit: s.ende_zeit,
           }
         })
         .filter(Boolean)
@@ -946,6 +969,11 @@ export default function DispoMatrix() {
                                       ].join(' ')}
                                     />
                                     <span className="truncate">{p?.name ?? 'Unbekannt'}</span>
+                                    {(s.start_zeit || s.ende_zeit) && (
+                                      <span className="shrink-0 font-mono text-[9px] text-muted">
+                                        {(s.start_zeit ?? b.start_zeit).slice(0, 5)}–{(s.ende_zeit ?? b.ende_zeit).slice(0, 5)}
+                                      </span>
+                                    )}
                                   </button>
                                   <button
                                     onClick={() => remove(s, pos.location_id)}
@@ -1125,6 +1153,28 @@ export default function DispoMatrix() {
                 </select>
               </label>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-muted">Von (optional)</span>
+                <input
+                  type="time"
+                  value={editShift.start_zeit?.slice(0, 5) ?? ''}
+                  onChange={(e) => setEditShift({ ...editShift, start_zeit: e.target.value || null })}
+                  className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-muted">Bis (optional)</span>
+                <input
+                  type="time"
+                  value={editShift.ende_zeit?.slice(0, 5) ?? ''}
+                  onChange={(e) => setEditShift({ ...editShift, ende_zeit: e.target.value || null })}
+                  className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+                />
+              </label>
+            </div>
+            <p className="-mt-1 text-xs text-muted/70">Leer = Zeiten des Schichtblocks. Eigene Zeit überschreibt den Block für diese Schicht.</p>
 
             <label className="block text-sm">
               <span className="text-muted">Typ</span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useProductions } from '../productions/ProductionProvider'
@@ -16,6 +16,7 @@ interface Block {
   start_zeit: string
   ende_zeit: string
   farbe: string | null
+  tag: string
 }
 interface PersonOpt {
   id: string
@@ -34,6 +35,8 @@ interface Shift {
   typ: string
   open_end: boolean
   notiz: string | null
+  start_zeit: string | null
+  ende_zeit: string | null
 }
 const SCHICHT_TYPEN = ['arbeit', 'standby', 'eigendispo', 'nachtwache'] as const
 interface RangeShift extends Shift {
@@ -69,6 +72,8 @@ interface WarnShift {
   person_id: string | null
   schichtblock_id: string | null
   tag: string
+  start_zeit: string | null
+  ende_zeit: string | null
 }
 
 // ArbZG-nahe Schwellen: § 5 (11 h Ruhezeit), § 3 (max. 10 h/Tag)
@@ -92,6 +97,11 @@ export default function DispoMatrix() {
   const [allShifts, setAllShifts] = useState<WarnShift[]>([])
   const [tag, setTag] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [error, setError] = useState<string | null>(null)
+  // Tages-Block-Verwaltung (inline) + „Tag kopieren"
+  const [blockForm, setBlockForm] = useState({ label: '', start_zeit: '', ende_zeit: '', farbe: '#6366f1' })
+  const [editBlock, setEditBlock] = useState<{ id: string; label: string; start_zeit: string; ende_zeit: string; farbe: string } | null>(null)
+  const [copyTo, setCopyTo] = useState('')
+  const [copyBesetzung, setCopyBesetzung] = useState(false)
 
   useEffect(() => {
     if (projekt?.start_datum) {
@@ -107,12 +117,6 @@ export default function DispoMatrix() {
       .select('id, label, location_id, department:department_id (name, sortierung)')
       .eq('projekt_id', projekt.id)
       .then(({ data }) => setPositionen((data as unknown as Position[]) ?? []))
-    supabase
-      .from('schichtblock')
-      .select('id, label, start_zeit, ende_zeit, farbe')
-      .eq('projekt_id', projekt.id)
-      .order('start_zeit', { ascending: true })
-      .then(({ data }) => setBloecke((data as Block[]) ?? []))
     supabase
       .from('besetzung')
       .select('status, person:person_id (id, name, kuerzel)')
@@ -142,12 +146,25 @@ export default function DispoMatrix() {
       })
   }, [projekt])
 
+  // Alle Schichtblöcke der Produktion (tagesübergreifend; für Konflikt-/ArbZG-Karten + Zeitraum).
+  // Die Spalten der Tagesmatrix filtern daraus auf den gewählten Tag (dayBloecke).
+  const loadBlocks = useCallback(() => {
+    if (!projekt) return
+    supabase
+      .from('schichtblock')
+      .select('id, label, start_zeit, ende_zeit, farbe, tag')
+      .eq('projekt_id', projekt.id)
+      .order('tag', { ascending: true })
+      .order('start_zeit', { ascending: true })
+      .then(({ data }) => setBloecke((data as Block[]) ?? []))
+  }, [projekt])
+
   // Tagesschichten
   const loadShifts = useCallback(() => {
     if (!projekt) return
     supabase
       .from('schicht')
-      .select('id, person_id, position_id, schichtblock_id, bestaetigt, typ, open_end, notiz')
+      .select('id, person_id, position_id, schichtblock_id, bestaetigt, typ, open_end, notiz, start_zeit, ende_zeit')
       .eq('projekt_id', projekt.id)
       .eq('tag', tag)
       .then(({ data }) => setShifts((data as Shift[]) ?? []))
@@ -174,7 +191,7 @@ export default function DispoMatrix() {
     if (!projekt || days.length === 0) return
     supabase
       .from('schicht')
-      .select('id, person_id, position_id, schichtblock_id, bestaetigt, tag')
+      .select('id, person_id, position_id, schichtblock_id, bestaetigt, tag, start_zeit, ende_zeit')
       .eq('projekt_id', projekt.id)
       .gte('tag', days[0])
       .lte('tag', days[days.length - 1])
@@ -186,11 +203,14 @@ export default function DispoMatrix() {
     if (!projekt) return
     supabase
       .from('schicht')
-      .select('id, person_id, schichtblock_id, tag')
+      .select('id, person_id, schichtblock_id, tag, start_zeit, ende_zeit')
       .eq('projekt_id', projekt.id)
       .then(({ data }) => setAllShifts((data as WarnShift[]) ?? []))
   }, [projekt])
 
+  useEffect(() => {
+    loadBlocks()
+  }, [loadBlocks])
   useEffect(() => {
     loadShifts()
   }, [loadShifts])
@@ -214,11 +234,16 @@ export default function DispoMatrix() {
           if (view === 'zeitraum') loadRange()
         },
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'schichtblock', filter: `projekt_id=eq.${projekt.id}` },
+        () => loadBlocks(),
+      )
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [projekt, loadShifts, loadRange, loadAll, view])
+  }, [projekt, loadShifts, loadRange, loadAll, loadBlocks, view])
 
   const positionenSortiert = useMemo(
     () =>
@@ -231,6 +256,21 @@ export default function DispoMatrix() {
   )
   const personMap = useMemo(() => new Map(personen.map((p) => [p.id, p])), [personen])
   const blockById = useMemo(() => new Map(bloecke.map((b) => [b.id, b])), [bloecke])
+  const posLocById = useMemo(() => new Map(positionen.map((p) => [p.id, p.location_id])), [positionen])
+  // Spalten der Tagesmatrix = nur Blöcke des gewählten Drehtags
+  const dayBloecke = useMemo(() => bloecke.filter((b) => b.tag === tag), [bloecke, tag])
+
+  // Effektive Zeit einer Schicht: eigener Override sonst Block-Zeit (HH:MM[:SS]).
+  // Null, wenn weder Override noch Block eine Zeit liefern.
+  const effTimes = useCallback(
+    (sh: { start_zeit: string | null; ende_zeit: string | null; schichtblock_id: string | null }) => {
+      const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
+      const start = sh.start_zeit ?? b?.start_zeit ?? null
+      const ende = sh.ende_zeit ?? b?.ende_zeit ?? null
+      return start && ende ? { start, ende } : null
+    },
+    [blockById],
+  )
 
   // Auslastung je Person am gewählten Tag (Blöcke + Stunden) für die Panel-Hinweise
   const dayLoad = useMemo(() => {
@@ -238,26 +278,27 @@ export default function DispoMatrix() {
     for (const sh of allShifts) {
       if (!sh.person_id || sh.tag !== tag) continue
       const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
+      const et = effTimes(sh)
       const cur = m.get(sh.person_id) ?? { blocks: [], ms: 0 }
-      if (b) {
-        cur.blocks.push(b.label)
-        const s = new Date(`${tag}T${b.start_zeit}Z`).getTime()
-        let e = new Date(`${tag}T${b.ende_zeit}Z`).getTime()
+      if (b) cur.blocks.push(b.label)
+      if (et) {
+        const s = new Date(`${tag}T${et.start}Z`).getTime()
+        let e = new Date(`${tag}T${et.ende}Z`).getTime()
         if (e <= s) e += 86400000
         cur.ms += e - s
       }
       m.set(sh.person_id, cur)
     }
     return m
-  }, [allShifts, tag, blockById])
+  }, [allShifts, tag, blockById, effTimes])
 
   // Konflikte: gleiche Person mit zeitlich überlappenden Schichten am Tag
   const { conflictIds, conflictList } = useMemo(() => {
-    const win = (blockId: string | null) => {
-      const b = blockId ? blockById.get(blockId) : null
-      if (!b) return null
-      const s = new Date(`${tag}T${b.start_zeit}`)
-      let e = new Date(`${tag}T${b.ende_zeit}`)
+    const win = (sh: Shift) => {
+      const et = effTimes(sh)
+      if (!et) return null
+      const s = new Date(`${tag}T${et.start}`)
+      let e = new Date(`${tag}T${et.ende}`)
       if (e <= s) e = new Date(e.getTime() + 86400000)
       return { s, e }
     }
@@ -274,8 +315,8 @@ export default function DispoMatrix() {
     for (const [pid, arr] of byPerson) {
       for (let i = 0; i < arr.length; i++) {
         for (let j = i + 1; j < arr.length; j++) {
-          const wi = win(arr[i].schichtblock_id)
-          const wj = win(arr[j].schichtblock_id)
+          const wi = win(arr[i])
+          const wj = win(arr[j])
           if (wi && wj && wi.s < wj.e && wj.s < wi.e) {
             ids.add(arr[i].id)
             ids.add(arr[j].id)
@@ -291,7 +332,7 @@ export default function DispoMatrix() {
       }
     }
     return { conflictIds: ids, conflictList: list }
-  }, [shifts, blockById, personMap, tag])
+  }, [shifts, blockById, personMap, tag, effTimes])
 
   // ArbZG-Warnungen: < 11 h Ruhezeit (§5) und > 10 h/Tag (§3), tagesübergreifend
   const { warnIds, warnList, warnPersons } = useMemo(() => {
@@ -300,10 +341,10 @@ export default function DispoMatrix() {
     const persons = new Set<string>()
     const msgs: { person: string; text: string }[] = []
     const interval = (sh: WarnShift) => {
-      const b = sh.schichtblock_id ? blockById.get(sh.schichtblock_id) : null
-      if (!b) return null
-      const s = new Date(`${sh.tag}T${b.start_zeit}Z`)
-      let e = new Date(`${sh.tag}T${b.ende_zeit}Z`)
+      const et = effTimes(sh)
+      if (!et) return null
+      const s = new Date(`${sh.tag}T${et.start}Z`)
+      let e = new Date(`${sh.tag}T${et.ende}Z`)
       if (e <= s) e = new Date(e.getTime() + 86400000)
       return { id: sh.id, tag: sh.tag, start: s.getTime(), end: e.getTime(), dur: e.getTime() - s.getTime() }
     }
@@ -358,7 +399,7 @@ export default function DispoMatrix() {
       }
     }
     return { warnIds: ids, warnList: msgs, warnPersons: persons }
-  }, [allShifts, blockById, personMap, tag])
+  }, [allShifts, blockById, personMap, tag, effTimes])
 
   async function assign(positionId: string, blockId: string, personId: string, locationId: string | null) {
     if (!projekt || !personId) return
@@ -401,6 +442,8 @@ export default function DispoMatrix() {
       tag,
       typ: 'arbeit',
       bestaetigt: s.bestaetigt,
+      start_zeit: s.start_zeit,
+      ende_zeit: s.ende_zeit,
     }
     showToast('Schicht entfernt', async () => {
       const { error: e } = await supabase.from('schicht').insert(payload)
@@ -421,6 +464,8 @@ export default function DispoMatrix() {
         open_end: editShift.open_end,
         notiz: editShift.notiz,
         bestaetigt: editShift.bestaetigt,
+        start_zeit: editShift.start_zeit,
+        ende_zeit: editShift.ende_zeit,
       })
       .eq('id', editShift.id)
     if (error) setError(error.message)
@@ -428,6 +473,131 @@ export default function DispoMatrix() {
       setEditShift(null)
       loadShifts()
     }
+  }
+
+  // --- Tages-Blöcke: anlegen / bearbeiten / löschen ---
+  async function addBlock(e: FormEvent) {
+    e.preventDefault()
+    if (!projekt || !blockForm.label.trim() || !blockForm.start_zeit || !blockForm.ende_zeit) return
+    const { error } = await supabase.from('schichtblock').insert({
+      org_id: projekt.org_id,
+      projekt_id: projekt.id,
+      tag,
+      label: blockForm.label.trim(),
+      start_zeit: blockForm.start_zeit,
+      ende_zeit: blockForm.ende_zeit,
+      farbe: blockForm.farbe,
+    })
+    if (error) setError(error.message)
+    else {
+      setBlockForm({ label: '', start_zeit: '', ende_zeit: '', farbe: '#6366f1' })
+      loadBlocks()
+    }
+  }
+
+  async function saveBlock() {
+    if (!editBlock) return
+    const { error } = await supabase
+      .from('schichtblock')
+      .update({
+        label: editBlock.label.trim(),
+        start_zeit: editBlock.start_zeit,
+        ende_zeit: editBlock.ende_zeit,
+        farbe: editBlock.farbe,
+      })
+      .eq('id', editBlock.id)
+    if (error) setError(error.message)
+    else {
+      setEditBlock(null)
+      loadBlocks()
+    }
+  }
+
+  async function deleteBlock(id: string) {
+    const { error } = await supabase.from('schichtblock').delete().eq('id', id)
+    if (error) setError(error.message)
+    else {
+      loadBlocks()
+      loadShifts()
+      loadAll()
+    }
+  }
+
+  // „Tag kopieren": Blöcke des aktuellen Tags (optional samt Besetzung) auf ein Zieldatum übertragen
+  async function copyDay(e: FormEvent) {
+    e.preventDefault()
+    if (!projekt || !copyTo) return
+    if (copyTo === tag) {
+      setError('Zieldatum entspricht dem aktuellen Tag.')
+      return
+    }
+    if (dayBloecke.length === 0) {
+      setError('Dieser Tag hat keine Blöcke zum Kopieren.')
+      return
+    }
+    setError(null)
+    const { data: inserted, error: be } = await supabase
+      .from('schichtblock')
+      .insert(
+        dayBloecke.map((b) => ({
+          org_id: projekt.org_id,
+          projekt_id: projekt.id,
+          tag: copyTo,
+          label: b.label,
+          start_zeit: b.start_zeit,
+          ende_zeit: b.ende_zeit,
+          farbe: b.farbe,
+        })),
+      )
+      .select('id, label, start_zeit, ende_zeit')
+    if (be) {
+      setError(be.message)
+      return
+    }
+    const newIds = (inserted ?? []).map((b) => b.id)
+    if (copyBesetzung) {
+      const key = (x: { label: string; start_zeit: string; ende_zeit: string }) =>
+        `${x.label}|${x.start_zeit}|${x.ende_zeit}`
+      const newByKey = new Map((inserted ?? []).map((b) => [key(b), b.id as string]))
+      const rows = shifts
+        .filter((s) => s.schichtblock_id)
+        .map((s) => {
+          const ob = blockById.get(s.schichtblock_id!)
+          const nb = ob ? newByKey.get(key(ob)) : null
+          if (!nb) return null
+          return {
+            org_id: projekt.org_id,
+            projekt_id: projekt.id,
+            person_id: s.person_id,
+            position_id: s.position_id,
+            schichtblock_id: nb,
+            location_id: s.position_id ? posLocById.get(s.position_id) ?? null : null,
+            tag: copyTo,
+            typ: s.typ,
+            open_end: s.open_end,
+            notiz: s.notiz,
+            start_zeit: s.start_zeit,
+            ende_zeit: s.ende_zeit,
+          }
+        })
+        .filter(Boolean)
+      if (rows.length > 0) {
+        const { error: se } = await supabase.from('schicht').insert(rows as object[])
+        if (se) setError(se.message)
+      }
+    }
+    const ziel = copyTo
+    const mitBesetzung = copyBesetzung
+    setCopyTo('')
+    setCopyBesetzung(false)
+    loadBlocks()
+    loadAll()
+    showToast(`Tag → ${ziel} kopiert${mitBesetzung ? ' (inkl. Besetzung)' : ''}`, async () => {
+      await supabase.from('schicht').delete().eq('tag', ziel).in('schichtblock_id', newIds)
+      await supabase.from('schichtblock').delete().in('id', newIds)
+      loadBlocks()
+      loadAll()
+    })
   }
 
   function cellShifts(positionId: string, blockId: string) {
@@ -454,7 +624,8 @@ export default function DispoMatrix() {
       view === v ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
     ].join(' ')
 
-  const emptyStructure = positionenSortiert.length === 0 || bloecke.length === 0
+  // Blöcke werden jetzt pro Tag inline angelegt; nur fehlende Positionen verweisen ins Setup.
+  const emptyStructure = positionenSortiert.length === 0
 
   return (
     <div className="space-y-5">
@@ -477,10 +648,11 @@ export default function DispoMatrix() {
 
       {emptyStructure ? (
         <div className="rounded-2xl border border-dashed border-line bg-surface p-8 text-center text-sm text-muted">
-          Noch keine Positionen/Schichtblöcke.{' '}
+          Noch keine Positionen.{' '}
           <Link to="/setup" className="font-medium text-accent-strong hover:underline">
             Jetzt im Setup einrichten →
           </Link>
+          <div className="mt-1 text-xs text-muted/70">Schichtblöcke legst du pro Drehtag hier in der Matrix an.</div>
         </div>
       ) : view === 'tag' ? (
         <div className="lg:grid lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start lg:gap-5">
@@ -582,6 +754,133 @@ export default function DispoMatrix() {
             </div>
           )}
 
+          {/* Schichtblöcke dieses Drehtags: anlegen / bearbeiten / löschen / Tag kopieren */}
+          <div className="rounded-2xl border border-line bg-surface p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs uppercase tracking-wide text-muted">
+                Schichtblöcke · dieser Drehtag
+              </span>
+              {dayBloecke.length === 0 && (
+                <span className="text-xs text-muted/70">Noch keine Blöcke — unten anlegen oder Tag kopieren.</span>
+              )}
+            </div>
+
+            {dayBloecke.length > 0 && (
+              <ul className="flex flex-wrap gap-2">
+                {dayBloecke.map((b) =>
+                  editBlock?.id === b.id ? (
+                    <li key={b.id} className="flex items-center gap-1.5 rounded-lg border border-accent/50 bg-canvas px-2 py-1">
+                      <input
+                        className="w-24 rounded border border-line bg-elevated px-1.5 py-0.5 text-xs"
+                        value={editBlock.label}
+                        onChange={(e) => setEditBlock({ ...editBlock, label: e.target.value })}
+                      />
+                      <input
+                        type="time"
+                        className="rounded border border-line bg-elevated px-1 py-0.5 text-xs"
+                        value={editBlock.start_zeit}
+                        onChange={(e) => setEditBlock({ ...editBlock, start_zeit: e.target.value })}
+                      />
+                      <input
+                        type="time"
+                        className="rounded border border-line bg-elevated px-1 py-0.5 text-xs"
+                        value={editBlock.ende_zeit}
+                        onChange={(e) => setEditBlock({ ...editBlock, ende_zeit: e.target.value })}
+                      />
+                      <input
+                        type="color"
+                        className="h-6 w-7 rounded border border-line"
+                        value={editBlock.farbe}
+                        onChange={(e) => setEditBlock({ ...editBlock, farbe: e.target.value })}
+                      />
+                      <button onClick={saveBlock} className="rounded bg-accent px-2 py-0.5 text-xs font-medium text-accent-ink">
+                        ✓
+                      </button>
+                      <button onClick={() => setEditBlock(null)} className="px-1 text-xs text-muted hover:text-ink">
+                        ×
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={b.id} className="group flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1 text-sm">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: b.farbe ?? '#94a3b8' }} />
+                      <span className="font-medium">{b.label}</span>
+                      <span className="font-mono tnum text-xs text-muted">
+                        {b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)}
+                      </span>
+                      <button
+                        onClick={() => setEditBlock({ id: b.id, label: b.label, start_zeit: b.start_zeit.slice(0, 5), ende_zeit: b.ende_zeit.slice(0, 5), farbe: b.farbe ?? '#6366f1' })}
+                        className="text-muted/60 opacity-0 transition hover:text-accent-strong group-hover:opacity-100"
+                        title="Block bearbeiten"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => deleteBlock(b.id)}
+                        className="text-muted/60 opacity-0 transition hover:text-danger group-hover:opacity-100"
+                        title="Block löschen"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+
+            <div className="flex flex-wrap items-end gap-3 border-t border-line pt-3">
+              <form onSubmit={addBlock} className="flex flex-wrap items-center gap-1.5">
+                <input
+                  className="w-28 rounded-lg border border-line bg-elevated px-2 py-1 text-sm"
+                  placeholder="Block (z. B. Drehblock)"
+                  value={blockForm.label}
+                  onChange={(e) => setBlockForm({ ...blockForm, label: e.target.value })}
+                />
+                <input
+                  type="time"
+                  className="rounded-lg border border-line bg-elevated px-1.5 py-1 text-sm"
+                  value={blockForm.start_zeit}
+                  onChange={(e) => setBlockForm({ ...blockForm, start_zeit: e.target.value })}
+                />
+                <input
+                  type="time"
+                  className="rounded-lg border border-line bg-elevated px-1.5 py-1 text-sm"
+                  value={blockForm.ende_zeit}
+                  onChange={(e) => setBlockForm({ ...blockForm, ende_zeit: e.target.value })}
+                />
+                <input
+                  type="color"
+                  className="h-8 w-9 rounded-lg border border-line"
+                  value={blockForm.farbe}
+                  onChange={(e) => setBlockForm({ ...blockForm, farbe: e.target.value })}
+                />
+                <button className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink transition hover:opacity-90">
+                  + Block
+                </button>
+              </form>
+
+              <form onSubmit={copyDay} className="ml-auto flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted">Tag kopieren →</span>
+                <input
+                  type="date"
+                  className="rounded-lg border border-line bg-elevated px-2 py-1 text-sm"
+                  value={copyTo}
+                  onChange={(e) => setCopyTo(e.target.value)}
+                />
+                <label className="flex items-center gap-1.5 text-xs text-muted">
+                  <input type="checkbox" checked={copyBesetzung} onChange={(e) => setCopyBesetzung(e.target.checked)} />
+                  inkl. Besetzung
+                </label>
+                <button
+                  disabled={!copyTo || dayBloecke.length === 0}
+                  className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium transition hover:border-accent hover:text-accent-strong disabled:opacity-40"
+                >
+                  Kopieren
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {dayBloecke.length > 0 && (
           <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -589,7 +888,7 @@ export default function DispoMatrix() {
                   <th className="sticky left-0 z-10 bg-surface p-3 text-left font-medium text-muted">
                     Position
                   </th>
-                  {bloecke.map((b) => (
+                  {dayBloecke.map((b) => (
                     <th key={b.id} className="min-w-[180px] p-3 text-left font-medium">
                       <span className="inline-flex items-center gap-2">
                         <span
@@ -614,7 +913,7 @@ export default function DispoMatrix() {
                         <div className="text-xs text-muted">{pos.department.name}</div>
                       )}
                     </td>
-                    {bloecke.map((b) => {
+                    {dayBloecke.map((b) => {
                       const cs = cellShifts(pos.id, b.id)
                       const cellKey = `${pos.id}:${b.id}`
                       return (
@@ -670,6 +969,11 @@ export default function DispoMatrix() {
                                       ].join(' ')}
                                     />
                                     <span className="truncate">{p?.name ?? 'Unbekannt'}</span>
+                                    {(s.start_zeit || s.ende_zeit) && (
+                                      <span className="shrink-0 font-mono text-[9px] text-muted">
+                                        {(s.start_zeit ?? b.start_zeit).slice(0, 5)}–{(s.ende_zeit ?? b.ende_zeit).slice(0, 5)}
+                                      </span>
+                                    )}
                                   </button>
                                   <button
                                     onClick={() => remove(s, pos.location_id)}
@@ -705,6 +1009,7 @@ export default function DispoMatrix() {
               </tbody>
             </table>
           </div>
+          )}
           </div>
         </div>
       ) : (
@@ -840,7 +1145,7 @@ export default function DispoMatrix() {
                   onChange={(e) => setEditShift({ ...editShift, schichtblock_id: e.target.value || null })}
                   className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
                 >
-                  {bloecke.map((b) => (
+                  {dayBloecke.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.label} ({b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)})
                     </option>
@@ -848,6 +1153,28 @@ export default function DispoMatrix() {
                 </select>
               </label>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-muted">Von (optional)</span>
+                <input
+                  type="time"
+                  value={editShift.start_zeit?.slice(0, 5) ?? ''}
+                  onChange={(e) => setEditShift({ ...editShift, start_zeit: e.target.value || null })}
+                  className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-muted">Bis (optional)</span>
+                <input
+                  type="time"
+                  value={editShift.ende_zeit?.slice(0, 5) ?? ''}
+                  onChange={(e) => setEditShift({ ...editShift, ende_zeit: e.target.value || null })}
+                  className="mt-1 w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink"
+                />
+              </label>
+            </div>
+            <p className="-mt-1 text-xs text-muted/70">Leer = Zeiten des Schichtblocks. Eigene Zeit überschreibt den Block für diese Schicht.</p>
 
             <label className="block text-sm">
               <span className="text-muted">Typ</span>

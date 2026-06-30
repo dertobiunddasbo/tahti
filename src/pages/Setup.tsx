@@ -5,7 +5,6 @@ import { useProductions } from '../productions/ProductionProvider'
 
 interface Loc { id: string; name: string; adresse: string | null }
 interface Dept { id: string; name: string; sortierung: number }
-interface Block { id: string; label: string; start_zeit: string; ende_zeit: string; farbe: string | null }
 interface Pos { id: string; label: string; department_id: string | null; location_id: string | null }
 
 const card = 'rounded-2xl border border-line bg-surface p-5 space-y-3'
@@ -19,7 +18,6 @@ export default function Setup() {
   const { selected: projekt } = useProductions()
   const [locs, setLocs] = useState<Loc[]>([])
   const [depts, setDepts] = useState<Dept[]>([])
-  const [blocks, setBlocks] = useState<Block[]>([])
   const [positions, setPositions] = useState<Pos[]>([])
   const [error, setError] = useState<string | null>(null)
   const [edit, setEdit] = useState<{ table: string; id: string } | null>(null)
@@ -35,7 +33,6 @@ export default function Setup() {
     const pid = projekt.id
     supabase.from('location').select('id, name, adresse').eq('projekt_id', pid).order('name').then(({ data }) => setLocs((data as Loc[]) ?? []))
     supabase.from('department').select('id, name, sortierung').eq('projekt_id', pid).order('sortierung').then(({ data }) => setDepts((data as Dept[]) ?? []))
-    supabase.from('schichtblock').select('id, label, start_zeit, ende_zeit, farbe').eq('projekt_id', pid).order('start_zeit').then(({ data }) => setBlocks((data as Block[]) ?? []))
     supabase.from('position').select('id, label, department_id, location_id').eq('projekt_id', pid).order('label').then(({ data }) => setPositions((data as Pos[]) ?? []))
   }, [projekt])
 
@@ -74,7 +71,6 @@ export default function Setup() {
   // Formularzustände
   const [loc, setLoc] = useState({ name: '', adresse: '' })
   const [dept, setDept] = useState({ name: '' })
-  const [block, setBlock] = useState({ label: '', start_zeit: '', ende_zeit: '', farbe: '#6366f1' })
   const [pos, setPos] = useState({ label: '', department_id: '', location_id: '' })
 
   if (!projekt) {
@@ -88,7 +84,6 @@ export default function Setup() {
 
   const submitLoc = (e: FormEvent) => { e.preventDefault(); if (!loc.name.trim()) return; insert('location', { name: loc.name.trim(), adresse: loc.adresse.trim() || null }); setLoc({ name: '', adresse: '' }) }
   const submitDept = (e: FormEvent) => { e.preventDefault(); if (!dept.name.trim()) return; insert('department', { name: dept.name.trim(), sortierung: depts.length + 1 }); setDept({ name: '' }) }
-  const submitBlock = (e: FormEvent) => { e.preventDefault(); if (!block.label.trim() || !block.start_zeit || !block.ende_zeit) return; insert('schichtblock', { label: block.label.trim(), start_zeit: block.start_zeit, ende_zeit: block.ende_zeit, farbe: block.farbe }); setBlock({ label: '', start_zeit: '', ende_zeit: '', farbe: '#6366f1' }) }
   const submitPos = (e: FormEvent) => { e.preventDefault(); if (!pos.label.trim()) return; insert('position', { label: pos.label.trim(), department_id: pos.department_id || null, location_id: pos.location_id || null }); setPos({ label: '', department_id: '', location_id: '' }) }
 
   return (
@@ -172,48 +167,15 @@ export default function Setup() {
         </form>
       </div>
 
-      {/* Schichtblöcke */}
+      {/* Schichtblöcke: jetzt tagesgebunden -> in der Dispo-Matrix pro Drehtag */}
       <div className={card}>
         <h2 className="font-medium">Schichtblöcke</h2>
-        <ul className="divide-y divide-line">
-          {blocks.map((b) => (
-            <li key={b.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-              {isEditing('schichtblock', b.id) ? (
-                <>
-                  <div className="flex flex-1 flex-wrap items-center gap-2">
-                    <input className={`${input} flex-1`} value={draft.label as string} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
-                    <input type="time" className={input} value={draft.start_zeit as string} onChange={(e) => setDraft({ ...draft, start_zeit: e.target.value })} />
-                    <input type="time" className={input} value={draft.ende_zeit as string} onChange={(e) => setDraft({ ...draft, ende_zeit: e.target.value })} />
-                    <input type="color" className="h-9 w-10 rounded-lg border border-line" value={(draft.farbe as string) ?? '#6366f1'} onChange={(e) => setDraft({ ...draft, farbe: e.target.value })} />
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={saveEdit} className={saveBtn}>Speichern</button>
-                    <button onClick={() => setEdit(null)} className={delBtn} title="Abbrechen">×</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: b.farbe ?? '#94a3b8' }} />
-                    {b.label} <span className="font-mono tnum text-muted">{b.start_zeit.slice(0, 5)}–{b.ende_zeit.slice(0, 5)}</span>
-                  </span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={() => startEdit('schichtblock', b.id, { label: b.label, start_zeit: b.start_zeit.slice(0, 5), ende_zeit: b.ende_zeit.slice(0, 5), farbe: b.farbe ?? '#6366f1' })} className={editBtn} title="Bearbeiten">✎</button>
-                    <button onClick={() => del('schichtblock', b.id)} className={delBtn} title="Löschen">×</button>
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-          {blocks.length === 0 && <li className="py-2 text-sm text-muted">Noch keine Schichtblöcke.</li>}
-        </ul>
-        <form onSubmit={submitBlock} className="flex flex-wrap items-center gap-2">
-          <input className={`${input} flex-1`} placeholder="Label (z. B. Früh)" value={block.label} onChange={(e) => setBlock({ ...block, label: e.target.value })} />
-          <input type="time" className={input} value={block.start_zeit} onChange={(e) => setBlock({ ...block, start_zeit: e.target.value })} />
-          <input type="time" className={input} value={block.ende_zeit} onChange={(e) => setBlock({ ...block, ende_zeit: e.target.value })} />
-          <input type="color" className="h-9 w-10 rounded-lg border border-line" value={block.farbe} onChange={(e) => setBlock({ ...block, farbe: e.target.value })} />
-          <button className={addBtn}>+ Hinzufügen</button>
-        </form>
+        <p className="text-sm text-muted">
+          Schichtblöcke sind jetzt <span className="font-medium text-ink">tagesgebunden</span> — du legst sie pro Drehtag
+          direkt in der{' '}
+          <Link to="/dispo" className="font-medium text-accent-strong hover:underline">Dispo-Matrix</Link>{' '}
+          an (inkl. „Tag kopieren", um einen Drehtag als Vorlage zu übernehmen).
+        </p>
       </div>
 
       {/* Positionen */}

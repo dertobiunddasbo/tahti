@@ -1,82 +1,139 @@
-# liiku — Crew, Dispo & Call Sheet
+# tahti — Crew, Dispo, Call Sheet – alle im Bild
 
-Datenbank-Fundament (V1-Datenmodell) für das liiku-Tool: ein Modell, mehrere Ausgabeformate
-(Schichtmatrix · Call Sheet · Org-Chart · Ablaufplan · Crew-Mobilansicht).
+Disposition für Bewegtbild-Produktionen: ein Datenmodell, mehrere Ansichten.
+Crew plant Schichten und bestätigt sie mobil, die Disposition besetzt am Desktop
+per Drag & Drop. Mandantenfähig (mehrere Produktionen parallel), serverseitig
+über Row Level Security abgesichert.
 
-Grundlage: `liiku_crew_callsheet_konzept.md` (Was/Warum) und `liiku_v0_build_spec.md` (Wie).
-Diese Iteration liefert **Datenmodell + Backend zuerst** — Supabase-Schema, RLS-Policies und einen
-anonymisierten Pilot-Seed. Frontend (Crew-PWA, Dispo-Matrix, PDF) folgt darauf.
+## Was die App kann
 
-## Was drin ist
+- **Produktionen verwalten** — beliebig viele Events/Drehs pro Firma anlegen,
+  Status (aktiv / kommend / abgeschlossen), globaler Produktions-Umschalter.
+- **Setup pro Produktion** — Locations, Departments, Schichtblöcke (Zeit + Farbe)
+  und Positionen anlegen/bearbeiten/löschen (inline).
+- **Crew/Besetzung** — Personen-Pool der Firma pflegen, Crew je Produktion
+  zuordnen (Status eingeladen/zugesagt/abgesagt), Skill-Katalog + Skills pro Person.
+- **Dispo-Matrix** — Position × Schichtblock pro Tag **und** Zeitraum-Übersicht;
+  Zuweisen/Entfernen per Drag & Drop aus dem Crew-Panel, **Realtime-Sync**.
+  - Crew-Karten mit Skills und **Form-Balken** (abgeleitete Auslastung).
+  - **Konfliktwarnung** bei zeitlicher Doppelbelegung.
+  - **ArbZG-Warnungen**: < 11 h Ruhezeit (§ 5), > 10 h pro Tag (§ 3).
+  - Schicht-Editor (Person, Position, Block, Typ, Notiz, Open-End).
+  - Lösch-Schutz: „Rückgängig"-Toast beim Entfernen.
+- **CrewHome** — „Jetzt / als Nächstes", kommende Schichten, **Bestätigen**,
+  Kontakte (Klick-zum-Anrufen), „Plan drucken/PDF".
+- **Auth** — Magic Link **und** Passwort-Login, Rollen-Gating.
+- **PWA** — installierbar, Offline-Cache der zuletzt geladenen Daten.
+- **Dark Mode** — folgt dem System, per Toggle umschaltbar.
+
+## Stack
+
+- **Frontend:** React 19 + Vite 6 + TypeScript, Tailwind v4, react-router,
+  vite-plugin-pwa (Workbox). Schriften self-hosted (Inter, JetBrains Mono).
+- **Backend:** Supabase (EU) — Postgres + Auth (Magic Link/Passwort) + Realtime + RLS.
+- **Hosting:** Vercel (EU), Production-Branch `main`.
+
+## Datenmodell (Überblick)
 
 ```
-supabase/
-├─ migrations/
-│  ├─ 20260629120000_schema.sql   Enums + alle Tabellen (Kern V0 + V1)
-│  └─ 20260629120100_rls.sql      Helper-Funktionen, RLS-Policies, Spaltenschutz, person_public-View
-└─ seed.sql                       Pilot "LSU '26" — ANONYMISIERTE Platzhalter
+person (global)  ──< membership >──  org (Firma, Mandant)
+                                       └──< projekt (= Produktion)
+                                              ├─ location, department, position, schichtblock
+                                              ├─ schicht          (das Assignment)
+                                              └─ besetzung        (Crew-Liste je Produktion)
+skill (org-weit)  ──< person_skill >──  person
 ```
 
-### Datenmodell (Überblick)
-- **Multi-Tenant:** `person` (global) ─< `membership` >─ `org` (Mandant) ─< `projekt`.
-  Jede projektbezogene Tabelle trägt `org_id` → strikte Isolation per RLS.
-- **Kern (Dispo):** `location`, `department`, `position`, `schichtblock`, `schicht`.
-- **V1:** `verfuegbarkeit`, `aufgabe` (+`aufgabe_person`), `meeting` (+`meeting_person`),
-  `lieferant`/`lieferung`, `fahrzeug`/`fahrt` (+`fahrt_person`), `callsheet`/`callsheet_person`.
+Jede projektbezogene Tabelle trägt `org_id` → strikte Mandanten-Isolation per RLS.
 
-### Rechte (RBAC, serverseitig via RLS)
+### Rollen (RBAC, serverseitig via RLS)
+
 | Rolle | Kurz |
 |---|---|
-| `admin` | alles inkl. Stammdaten, Tagessätze, Pool |
-| `disponent` | Projekte, Schichten, Call Sheets, alle Kontakte |
+| `admin` | alles inkl. Stammdaten, Personen-Pool, Tagessätze |
+| `disponent` | Produktionen, Setup, Crew, Schichten, alle Kontakte |
 | `lead` | Planung (Schreibrechte auf Projektdaten) |
-| `crew` | eigene Schichten + Kontakte der eigenen Org, bestätigen, eigene Verfügbarkeit |
+| `crew` | eigene Schichten + Kontakte der eigenen Org, bestätigen |
 | `gast` | Lesezugriff (Mitglied der Org) |
 
-Sicherheitsgarantien (Akzeptanzkriterien-relevant):
-- Crew sieht **nur eigene** Schichten (`schicht_select`), kann nur `bestaetigt` der eigenen Schicht
-  ändern (DB-Trigger `schicht_crew_guard`, nicht nur App-seitig).
-- `membership.tagessatz` geht nie an Crew (RLS); das Crew-Frontend liest Personen über die View
-  `person_public` (ohne Tagessatz).
-- Zwei Orgs → Daten strikt getrennt; eine Person in mehreren Orgs sieht ihre Schichten orgübergreifend.
+Sicherheitsgarantien (per RLS, getestet): Crew sieht **nur eigene** Schichten,
+**keine** Tagessätze (View `person_public`), kann nur das eigene `bestaetigt`
+ändern (DB-Trigger `schicht_crew_guard`), keine Schichten anlegen. Zwei Orgs →
+Daten strikt getrennt.
 
-## Setup gegen dein Supabase-Cloud-Projekt
+## Projektstruktur
 
-Voraussetzung: Supabase-Projekt in der **EU-Region (Frankfurt)** anlegen (Dashboard).
+```
+src/
+├─ main.tsx · App.tsx           Routing + Rollen-Gating
+├─ auth/                        AuthProvider (Session), Login (Magic Link/Passwort)
+├─ productions/                 ProductionProvider (globaler Produktions-Kontext)
+├─ components/AppShell.tsx      Header, Nav, Produktions-Umschalter, Dark-Toggle
+├─ pages/
+│  ├─ CrewHome.tsx              Crew-Ansicht
+│  ├─ Produktionen.tsx          Liste + Anlegen
+│  ├─ Setup.tsx                 Struktur je Produktion
+│  ├─ Crew.tsx                  Besetzung + Skill-Katalog
+│  └─ DispoMatrix.tsx           Dispo (Tag/Zeitraum, DnD, Warnungen, Editor)
+└─ lib/                         supabase-Client, Typen, Theme
+supabase/
+├─ migrations/                  Schema, RLS, Custom Fields, Auth-Link, Besetzung, Skills
+└─ seed.sql                     anonymisierter Beispiel-Seed
+```
+
+## Lokal entwickeln
 
 ```bash
-# 1. CLI einloggen (interaktiv — im Chat mit ! ausführen):
-#    ! supabase login
+# 1. .env.local anlegen (Werte aus Supabase → Settings → API)
+cp .env.example .env.local
+#    VITE_SUPABASE_URL=https://<PROJECT_REF>.supabase.co
+#    VITE_SUPABASE_ANON_KEY=<publishable/anon key>
 
-# 2. Repo mit deinem Projekt verknüpfen (PROJECT_REF aus der Dashboard-URL):
+# 2. Abhängigkeiten + Dev-Server
+npm install
+npm run dev            # http://localhost:5173
+
+# Weitere Skripte
+npm run build          # tsc + Production-Build (dist/)
+npm run typecheck      # nur Typprüfung
+npm run preview        # Build lokal ausliefern
+```
+
+## Supabase einrichten
+
+```bash
 supabase link --project-ref <PROJECT_REF>
-
-# 3. Schema + Policies pushen:
-supabase db push
-
-# 4. Seed einspielen (anonymisierte Pilotdaten):
-psql "$DATABASE_URL" -f supabase/seed.sql
-#    DATABASE_URL = Connection String aus dem Dashboard (Settings → Database).
+supabase db push          # wendet alle Migrationen an
+# optional: psql "$DATABASE_URL" -f supabase/seed.sql
 ```
 
-> Der Seed enthält **nur Platzhalter**. Echte Stabliste, Mobilnummern und Tagessätze
-> werden direkt im Projekt eingespielt — nicht in dieses Repo committen.
+`uri_allow_list` und `site_url` in der Auth-Config auf die Dev- und
+Produktions-URLs setzen (Dashboard → Authentication → URL Configuration).
 
-## Lokal entwickeln/testen (optional, Docker erforderlich)
+## Deployment (Vercel)
 
-```bash
-supabase start            # lokaler Stack (Postgres, Auth, Realtime, Studio)
-supabase db reset         # wendet Migrationen + seed.sql an
-# Studio: http://127.0.0.1:54323
-```
+1. Repo importieren; Framework wird als Vite erkannt (`vercel.json` setzt
+   Build/Output/SPA-Rewrite).
+2. **Environment Variables** setzen (Production *und* Preview):
+   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+   Diese werden **zur Buildzeit** eingebacken → nach dem Setzen einmal neu deployen.
+3. **Production Branch = `main`.**
 
-## Auth-Flow (Magic Link)
-1. Disponent legt `person` (Name, E-Mail) + `membership` an.
-2. Magic Link via `supabase.auth.signInWithOtp`.
-3. Beim ersten Login wird `person.auth_user_id` mit `auth.users.id` verknüpft.
-4. Kein Passwort; Folge-Logins ebenfalls per Magic Link.
+## Auth-Flow
 
-## Nächste Schritte (noch offen)
-- Finales Rollen-/Positions-Mapping LSU (Platzhalter im Seed ersetzen).
-- Verknüpfungs-Trigger `auth.users` → `person.auth_user_id` beim ersten Login.
-- Frontend: Crew-PWA (CrewHome), Dispo-Matrix (Realtime), PDF-Edge-Function.
+1. Disposition legt `person` (Name, E-Mail) + `membership` an (Crew-Tab).
+2. Login per **Magic Link** (`signInWithOtp`) oder **Passwort**.
+3. Beim ersten Login verknüpft ein Trigger `auth.users` ↔ `person.auth_user_id`
+   über die E-Mail (Reihenfolge egal).
+
+> **Hinweis:** Echter Magic-Link-Versand braucht **eigenes SMTP** (Supabase →
+> Authentication → SMTP). Der eingebaute Mailer ist stark rate-limitiert. Bis
+> dahin: Passwort-Login.
+
+## Offen / Roadmap
+
+- Eigenes SMTP für Crew-Einladungen.
+- Skill ↔ Position-Matching im Dispo-Panel („passend für diese Position").
+- Verfügbarkeits-Blocker (`verfuegbarkeit`).
+- Serverseitiges Call-Sheet-PDF (aktuell Browser-Druck).
+- Soft-Delete/Stornieren mit Historie (statt Hard-Delete) bei Bedarf.
